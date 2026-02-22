@@ -24,7 +24,6 @@ import { applyRealtimeRoomNotification } from '@/lib/chat/realtimeRoomCache';
 import { chatStompManager } from '@/lib/chat/stompManager';
 import { chatKeys } from '@/lib/hooks/chat/queryKeys';
 import { useChatMessagesInfiniteQuery } from '@/lib/hooks/chat/useChatMessagesInfiniteQuery';
-import { useChatRealtimeConnection } from '@/lib/hooks/chat/useChatRealtimeConnection';
 import { useChatRoomDetailQuery } from '@/lib/hooks/chat/useChatRoomDetailQuery';
 import { useChatSubscriptions } from '@/lib/hooks/chat/useChatSubscriptions';
 import { useCreatePrivateRoomMutation } from '@/lib/hooks/chat/useCreatePrivateRoomMutation';
@@ -36,11 +35,7 @@ import { useFollowUserMutation } from '@/lib/hooks/users/useFollowUserMutation';
 import { useUnfollowUserMutation } from '@/lib/hooks/users/useUnfollowUserMutation';
 import { toast } from '@/lib/toast/store';
 
-import type {
-  ChatMessageResponse,
-  ChatRoomNotificationResponse,
-  SendChatMessagePayload,
-} from '@/lib/api/chatMessages';
+import type { ChatMessageResponse, SendChatMessagePayload } from '@/lib/api/chatMessages';
 import type { IMessage } from '@stomp/stompjs';
 
 type ChatRoomPageProps = Readonly<{
@@ -59,7 +54,6 @@ const TOP_FETCH_THRESHOLD = 80;
 const BOTTOM_CONFIRM_THRESHOLD = 32;
 const DELETE_LONG_PRESS_MS = 2000;
 const MESSAGE_SEND_DESTINATION = '/app/chat/message';
-const NOTIFICATION_TOAST_COOLDOWN_MS = 3000;
 
 function resolveTitle(roomName: string | null, title: string | null) {
   const trimmedRoomName = roomName?.trim();
@@ -177,7 +171,6 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   const prevScrollHeightRef = useRef(0);
   const hasPatchedOnEntryRef = useRef(false);
   const lastPatchedMsgIdRef = useRef<number | null>(null);
-  const lastNotificationToastRef = useRef<Readonly<{ roomId: number; at: number }> | null>(null);
   const patchLastReadMutation = usePatchLastReadMutation(roomId ?? 0);
   const deleteMessageMutation = useDeleteMessageMutation(roomId ?? 0);
   const putRoomSettingsMutation = usePutRoomSettingsMutation(roomId ?? 0);
@@ -185,7 +178,6 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   const createPrivateRoomMutation = useCreatePrivateRoomMutation();
   const followUserMutation = useFollowUserMutation();
   const unfollowUserMutation = useUnfollowUserMutation();
-  useChatRealtimeConnection({ enabled: roomId !== null });
 
   const {
     data: messageData,
@@ -346,45 +338,6 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     [patchLastReadOnce, queryClient, roomId],
   );
 
-  const handleRealtimeUserNotification = useCallback(
-    (frame: IMessage) => {
-      const notification = parseStompJson<ChatRoomNotificationResponse>(frame.body);
-      if (!notification || typeof notification.roomId !== 'number') {
-        return;
-      }
-
-      const roomUpdated = applyRealtimeRoomNotification(queryClient, notification);
-      if (!roomUpdated) {
-        void queryClient.invalidateQueries({ queryKey: chatKeys.rooms() });
-      }
-
-      if (roomId !== null && notification.roomId === roomId) {
-        return;
-      }
-
-      queryClient.setQueryData<Record<number, boolean>>(chatKeys.realtimeUnreadRooms(), (prev) => ({
-        ...(prev ?? {}),
-        [notification.roomId]: true,
-      }));
-
-      queryClient.setQueryData<number>(chatKeys.realtimeUnread(), (prev) =>
-        typeof prev === 'number' ? prev + 1 : 1,
-      );
-
-      const now = Date.now();
-      const last = lastNotificationToastRef.current;
-      if (
-        !last ||
-        last.roomId !== notification.roomId ||
-        now - last.at > NOTIFICATION_TOAST_COOLDOWN_MS
-      ) {
-        toast('새 메시지가 도착했습니다.');
-        lastNotificationToastRef.current = { roomId: notification.roomId, at: now };
-      }
-    },
-    [queryClient, roomId],
-  );
-
   const handleSendMessage = useCallback(
     (event?: FormEvent<HTMLFormElement>) => {
       event?.preventDefault();
@@ -417,11 +370,10 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   );
 
   useChatSubscriptions({
-    enabled: roomId !== null && currentUserId !== null,
+    enabled: roomId !== null,
     roomId,
-    userId: currentUserId,
+    userId: null,
     onRoomMessage: handleRealtimeRoomMessage,
-    onUserNotification: handleRealtimeUserNotification,
   });
 
   const clearDeleteLongPressTimer = useCallback(() => {

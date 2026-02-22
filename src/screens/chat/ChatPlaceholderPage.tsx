@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useHeader } from '@/components/layout/HeaderContext';
 import { useNavigationGuard } from '@/components/layout/NavigationGuardContext';
@@ -12,15 +12,10 @@ import ListLoadMoreSentinel from '@/components/llm/rooms/ListLoadMoreSentinel';
 import { fetchChatMessages } from '@/lib/api/chatMessages';
 import { fetchChatRooms } from '@/lib/api/chatRooms';
 import { getUserIdFromAccessToken } from '@/lib/auth/token';
-import { applyRealtimeRoomNotification } from '@/lib/chat/realtimeRoomCache';
 import { chatKeys } from '@/lib/hooks/chat/queryKeys';
-import { useChatRealtimeConnection } from '@/lib/hooks/chat/useChatRealtimeConnection';
 import { useChatRoomsInfiniteQuery } from '@/lib/hooks/chat/useChatRoomsInfiniteQuery';
-import { useChatSubscriptions } from '@/lib/hooks/chat/useChatSubscriptions';
 
-import type { ChatRoomNotificationResponse } from '@/lib/api/chatMessages';
 import type { ChatRoomListResponse } from '@/lib/api/chatRooms';
-import type { IMessage } from '@stomp/stompjs';
 
 const ROOM_PAGE_SIZE = 10;
 const ROOM_NAME_MAX_LENGTH = 6;
@@ -88,14 +83,6 @@ function truncateRoomName(title: string | null): string {
   return `${trimmed.slice(0, ROOM_NAME_MAX_LENGTH)}…`;
 }
 
-function parseStompJson<T>(body: string): T | null {
-  try {
-    return JSON.parse(body) as T;
-  } catch {
-    return null;
-  }
-}
-
 function resolveTimestamp(value: string | null): number | null {
   if (!value) {
     return null;
@@ -145,7 +132,6 @@ export default function ChatPlaceholderPage() {
     enabled: false,
     initialData: {},
   });
-  useChatRealtimeConnection({ enabled: currentUserId !== null });
   const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useChatRoomsInfiniteQuery({
       size: ROOM_PAGE_SIZE,
@@ -165,33 +151,6 @@ export default function ChatPlaceholderPage() {
       })
       .sort(compareRoomsByLastMessage);
   }, [data]);
-
-  const handleUserNotification = useCallback(
-    (frame: IMessage) => {
-      const notification = parseStompJson<ChatRoomNotificationResponse>(frame.body);
-      if (!notification || typeof notification.roomId !== 'number') {
-        return;
-      }
-
-      const roomUpdated = applyRealtimeRoomNotification(queryClient, notification);
-      if (!roomUpdated) {
-        void queryClient.invalidateQueries({ queryKey: chatKeys.rooms() });
-      }
-
-      queryClient.setQueryData<Record<number, boolean>>(chatKeys.realtimeUnreadRooms(), (prev) => ({
-        ...(prev ?? {}),
-        [notification.roomId]: true,
-      }));
-    },
-    [queryClient],
-  );
-
-  useChatSubscriptions({
-    enabled: currentUserId !== null,
-    roomId: null,
-    userId: currentUserId,
-    onUserNotification: handleUserNotification,
-  });
 
   useEffect(() => {
     setOptions({
