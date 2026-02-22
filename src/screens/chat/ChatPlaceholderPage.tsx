@@ -421,9 +421,9 @@ export default function ChatPlaceholderPage() {
             type="button"
             onClick={() => requestNavigation(() => router.push('/chat/new'))}
             aria-label="채팅방 생성"
-            className="pointer-events-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#0F172A] text-white shadow-lg shadow-black/20 transition hover:bg-[#1E293B]"
+            className="pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-b from-[#1CD48A] to-[#05C075] text-white shadow-[0_12px_24px_rgba(5,192,117,0.35)] ring-1 ring-white/60 transition hover:scale-105 hover:from-[#2DE09A] hover:to-[#07B374] active:translate-y-0.5"
           >
-            <Plus className="h-6 w-6" />
+            <Plus className="h-5 w-5" />
           </button>
         </div>
       </div>
