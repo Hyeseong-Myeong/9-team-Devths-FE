@@ -99,6 +99,7 @@ export default function AppFrame({
       const roomUpdated = applyRealtimeRoomNotification(queryClient, notification);
       if (!roomUpdated) {
         void queryClient.invalidateQueries({ queryKey: chatKeys.rooms() });
+        void queryClient.refetchQueries({ queryKey: chatKeys.rooms(), type: 'all' });
       }
 
       if (currentChatRoomId !== null && notification.roomId === currentChatRoomId) {

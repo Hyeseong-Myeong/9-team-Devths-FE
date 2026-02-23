@@ -309,6 +309,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
       });
       if (!roomUpdated) {
         void queryClient.invalidateQueries({ queryKey: chatKeys.rooms() });
+        void queryClient.refetchQueries({ queryKey: chatKeys.rooms(), type: 'all' });
       }
 
       const container = messageListRef.current;
