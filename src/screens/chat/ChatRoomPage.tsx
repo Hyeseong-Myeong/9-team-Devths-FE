@@ -178,7 +178,6 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { setOptions, resetOptions } = useHeader();
-  const { data, isLoading, isError, refetch } = useChatRoomDetailQuery(roomId);
   const currentUserId = getUserIdFromAccessToken();
   const [messageInput, setMessageInput] = useState('');
   const [expandedMessageIds, setExpandedMessageIds] = useState<Set<number>>(new Set());
@@ -186,6 +185,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isParticipantsModalOpen, setIsParticipantsModalOpen] = useState(false);
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
+  const [isLeavingRoom, setIsLeavingRoom] = useState(false);
   const [roomNameInput, setRoomNameInput] = useState('');
   const [isAlarmOnInput, setIsAlarmOnInput] = useState(true);
   const [followingUserIds, setFollowingUserIds] = useState<Set<number>>(new Set());
@@ -201,6 +201,8 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     src: string;
     alt: string;
   } | null>(null);
+  const activeRoomId = isLeavingRoom ? null : roomId;
+  const { data, isLoading, isError, refetch } = useChatRoomDetailQuery(activeRoomId);
   const hasLoadedFollowingsRef = useRef(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const imageAttachmentInputRef = useRef<HTMLInputElement>(null);
@@ -229,7 +231,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     hasNextPage,
     isFetchingNextPage,
   } = useChatMessagesInfiniteQuery({
-    roomId: roomId ?? 0,
+    roomId: isLeavingRoom ? 0 : (roomId ?? 0),
     size: MESSAGE_PAGE_SIZE,
   });
 
@@ -533,7 +535,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   );
 
   useChatSubscriptions({
-    enabled: roomId !== null,
+    enabled: !isLeavingRoom && roomId !== null,
     roomId,
     userId: null,
     onRoomMessage: handleRealtimeRoomMessage,
@@ -731,12 +733,14 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     }
 
     try {
+      setIsLeavingRoom(true);
       await leaveChatRoomMutation.mutateAsync();
       setIsLeaveConfirmOpen(false);
       setIsSettingsOpen(false);
       toast('채팅방에서 나갔습니다.');
       router.push('/chat');
     } catch (error) {
+      setIsLeavingRoom(false);
       const err = error as Error & { serverMessage?: string };
       toast(err.serverMessage ?? '채팅방 나가기에 실패했습니다.');
     }
@@ -793,6 +797,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     prevScrollHeightRef.current = 0;
     hasPatchedOnEntryRef.current = false;
     lastPatchedMsgIdRef.current = null;
+    setIsLeavingRoom(false);
     setMessageInput('');
   }, [roomId]);
 

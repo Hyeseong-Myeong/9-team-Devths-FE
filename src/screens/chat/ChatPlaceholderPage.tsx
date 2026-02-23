@@ -130,11 +130,15 @@ export default function ChatPlaceholderPage() {
   const handledTargetRouteRef = useRef<string | null>(null);
   const { data: roomUnreadFlags = {} } = useQuery<Record<number, boolean>>({
     queryKey: chatKeys.realtimeUnreadRooms(),
+    queryFn: () =>
+      queryClient.getQueryData<Record<number, boolean>>(chatKeys.realtimeUnreadRooms()) ?? {},
     enabled: false,
     initialData: {},
   });
   const { data: rejoinedRoomUiOverrides = {} } = useQuery<RejoinedRoomUiOverrideMap>({
     queryKey: chatKeys.rejoinedRoomUiOverrides(),
+    queryFn: () =>
+      queryClient.getQueryData<RejoinedRoomUiOverrideMap>(chatKeys.rejoinedRoomUiOverrides()) ?? {},
     enabled: false,
     initialData: {},
   });
