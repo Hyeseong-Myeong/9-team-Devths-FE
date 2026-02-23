@@ -2,11 +2,12 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Menu } from 'lucide-react';
+import { Loader2, Menu, Paperclip } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   useCallback,
+  type ChangeEvent,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -38,6 +39,7 @@ import { usePutRoomSettingsMutation } from '@/lib/hooks/chat/usePutRoomSettingsM
 import { useFollowUserMutation } from '@/lib/hooks/users/useFollowUserMutation';
 import { useUnfollowUserMutation } from '@/lib/hooks/users/useUnfollowUserMutation';
 import { toast } from '@/lib/toast/store';
+import { uploadFile } from '@/lib/upload/uploadFile';
 
 import type { ChatMessageResponse, SendChatMessagePayload } from '@/lib/api/chatMessages';
 import type { IMessage } from '@stomp/stompjs';
@@ -167,8 +169,10 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   const [followStateOverrides, setFollowStateOverrides] = useState<Record<number, boolean>>({});
   const [activeParticipantUserId, setActiveParticipantUserId] = useState<number | null>(null);
   const [isFollowingsLoading, setIsFollowingsLoading] = useState(false);
+  const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const hasLoadedFollowingsRef = useRef(false);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const unreadDividerRef = useRef<HTMLDivElement>(null);
   const deleteLongPressTimerRef = useRef<number | null>(null);
   const hasInitialScrollRef = useRef(false);
@@ -374,6 +378,64 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
       setMessageInput('');
     },
     [messageInput, roomId],
+  );
+
+  const handleAttachmentButtonClick = useCallback(() => {
+    if (isAttachmentUploading) {
+      return;
+    }
+
+    attachmentInputRef.current?.click();
+  }, [isAttachmentUploading]);
+
+  const handleAttachmentChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const selectedFile = event.target.files?.[0] ?? null;
+      event.target.value = '';
+
+      if (!selectedFile || roomId === null || isAttachmentUploading) {
+        return;
+      }
+
+      setIsAttachmentUploading(true);
+
+      try {
+        const uploaded = await uploadFile({
+          file: selectedFile,
+          category: 'AI_CHAT_ATTACHMENT',
+          refType: 'CHATROOM',
+          refId: roomId,
+        });
+
+        const isImageAttachment = selectedFile.type.startsWith('image/');
+        const payload: SendChatMessagePayload = isImageAttachment
+          ? {
+              roomId,
+              type: 'IMAGE',
+              content: null,
+              s3Key: uploaded.s3Key,
+            }
+          : {
+              roomId,
+              type: 'FILE',
+              // Backend FILE 저장 로직은 content 필드를 사용합니다.
+              content: uploaded.s3Key,
+              s3Key: uploaded.s3Key,
+            };
+
+        const published = chatStompManager.publishJson(MESSAGE_SEND_DESTINATION, payload);
+        if (!published) {
+          toast('파일 메시지 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+          return;
+        }
+      } catch (error) {
+        const err = error as Error;
+        toast(err.message || '파일 업로드에 실패했습니다.');
+      } finally {
+        setIsAttachmentUploading(false);
+      }
+    },
+    [isAttachmentUploading, roomId],
   );
 
   useChatSubscriptions({
@@ -967,6 +1029,27 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
         className="mt-2 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2"
       >
         <input
+          ref={attachmentInputRef}
+          type="file"
+          className="hidden"
+          onChange={(event) => {
+            void handleAttachmentChange(event);
+          }}
+        />
+        <button
+          type="button"
+          onClick={handleAttachmentButtonClick}
+          disabled={roomId === null || isAttachmentUploading}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-not-allowed disabled:text-neutral-300"
+          aria-label="파일 첨부"
+        >
+          {isAttachmentUploading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Paperclip className="h-4 w-4" />
+          )}
+        </button>
+        <input
           value={messageInput}
           onChange={(event) => setMessageInput(event.target.value)}
           placeholder="메시지를 입력하세요."
@@ -976,7 +1059,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
         />
         <button
           type="submit"
-          disabled={!messageInput.trim()}
+          disabled={!messageInput.trim() || isAttachmentUploading}
           className="rounded-lg bg-[#0F172A] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
         >
           전송
