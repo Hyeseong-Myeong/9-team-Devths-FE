@@ -1245,7 +1245,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
         <button
           type="button"
           onClick={handleAttachmentButtonClick}
-          disabled={roomId === null || isAttachmentUploading}
+          disabled={isAttachmentUploading}
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-not-allowed disabled:text-neutral-300"
           aria-label="파일 첨부"
         >
