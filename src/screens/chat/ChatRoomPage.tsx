@@ -1273,7 +1273,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
       </form>
 
       {imagePreview ? (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/80 p-4">
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 p-4">
           <button
             type="button"
             aria-label="이미지 닫기"
@@ -1414,6 +1414,59 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
                   className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm text-neutral-900 placeholder:text-neutral-400 disabled:bg-neutral-100 disabled:text-neutral-400"
                 />
               </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-neutral-200 p-3">
+              <p className="text-sm font-semibold text-neutral-900">최근 사진/파일 미리보기</p>
+              <p className="mt-1 text-xs text-neutral-500">최근 공유된 이미지 최대 4장</p>
+
+              {data?.recentImages?.length ? (
+                <ul className="mt-3 grid grid-cols-4 gap-2">
+                  {data.recentImages.map((recentImage) => {
+                    const imageSrc = resolveChatAssetUrl(recentImage.s3Key);
+
+                    if (!imageSrc) {
+                      return (
+                        <li
+                          key={recentImage.attachmentId}
+                          className="flex aspect-square items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-center text-[10px] leading-4 text-neutral-400"
+                        >
+                          미리보기 불가
+                        </li>
+                      );
+                    }
+
+                    return (
+                      <li key={recentImage.attachmentId}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setImagePreview({
+                              src: imageSrc,
+                              alt: recentImage.originalName || '최근 이미지 미리보기',
+                            })
+                          }
+                          className="block w-full overflow-hidden rounded-lg border border-neutral-200"
+                          aria-label={`${recentImage.originalName || '최근 이미지'} 확대 보기`}
+                        >
+                          <Image
+                            src={imageSrc}
+                            alt={recentImage.originalName || '최근 이미지'}
+                            width={120}
+                            height={120}
+                            className="aspect-square h-auto w-full object-cover"
+                            unoptimized
+                          />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="mt-3 rounded-lg bg-neutral-50 px-3 py-3 text-xs text-neutral-500">
+                  아직 공유된 이미지가 없습니다.
+                </p>
+              )}
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
