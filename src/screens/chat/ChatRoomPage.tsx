@@ -60,6 +60,29 @@ const TOP_FETCH_THRESHOLD = 80;
 const BOTTOM_CONFIRM_THRESHOLD = 32;
 const DELETE_LONG_PRESS_MS = 2000;
 const MESSAGE_SEND_DESTINATION = '/app/chat/message';
+const MAX_IMAGE_ATTACHMENTS_PER_PICK = 9;
+const MAX_ATTACHMENT_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+const ALLOWED_FILE_MIME_TYPES = new Set(['application/pdf']);
+
+function resolveChatAssetUrl(s3KeyOrUrl: string | null): string | null {
+  if (!s3KeyOrUrl) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(s3KeyOrUrl)) {
+    return s3KeyOrUrl;
+  }
+
+  const base = process.env.NEXT_PUBLIC_S3_URL?.trim();
+  if (!base) {
+    return null;
+  }
+
+  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+  const normalizedKey = s3KeyOrUrl.startsWith('/') ? s3KeyOrUrl.slice(1) : s3KeyOrUrl;
+  return `${normalizedBase}/${normalizedKey}`;
+}
 
 function resolveTitle(roomName: string | null, title: string | null) {
   const trimmedRoomName = roomName?.trim();
@@ -170,6 +193,10 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   const [activeParticipantUserId, setActiveParticipantUserId] = useState<number | null>(null);
   const [isFollowingsLoading, setIsFollowingsLoading] = useState(false);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{
+    src: string;
+    alt: string;
+  } | null>(null);
   const hasLoadedFollowingsRef = useRef(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -390,43 +417,80 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
 
   const handleAttachmentChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
-      const selectedFile = event.target.files?.[0] ?? null;
+      const selectedFiles = Array.from(event.target.files ?? []);
       event.target.value = '';
 
-      if (!selectedFile || roomId === null || isAttachmentUploading) {
+      if (selectedFiles.length === 0 || roomId === null || isAttachmentUploading) {
+        return;
+      }
+
+      const imageFiles = selectedFiles.filter((file) => ALLOWED_IMAGE_MIME_TYPES.has(file.type));
+      const nonImageFiles = selectedFiles.filter(
+        (file) => !ALLOWED_IMAGE_MIME_TYPES.has(file.type),
+      );
+
+      if (imageFiles.length > 0 && nonImageFiles.length > 0) {
+        toast('이미지와 파일은 동시에 첨부할 수 없습니다.');
+        return;
+      }
+
+      if (imageFiles.length > MAX_IMAGE_ATTACHMENTS_PER_PICK) {
+        toast(`이미지는 한 번에 최대 ${MAX_IMAGE_ATTACHMENTS_PER_PICK}장까지 첨부할 수 있습니다.`);
+        return;
+      }
+
+      if (nonImageFiles.length > 1) {
+        toast('파일은 한 번에 1개만 첨부할 수 있습니다.');
+        return;
+      }
+
+      for (const file of selectedFiles) {
+        if (file.size > MAX_ATTACHMENT_FILE_SIZE_BYTES) {
+          toast('파일 용량은 5MB 이하만 첨부할 수 있습니다.');
+          return;
+        }
+      }
+
+      if (
+        nonImageFiles.length === 1 &&
+        !ALLOWED_FILE_MIME_TYPES.has(nonImageFiles[0]?.type ?? '')
+      ) {
+        toast('파일 첨부는 PDF 형식만 지원합니다.');
         return;
       }
 
       setIsAttachmentUploading(true);
 
       try {
-        const uploaded = await uploadFile({
-          file: selectedFile,
-          category: 'AI_CHAT_ATTACHMENT',
-          refType: 'CHATROOM',
-          refId: roomId,
-        });
+        for (const file of selectedFiles) {
+          const uploaded = await uploadFile({
+            file,
+            category: 'AI_CHAT_ATTACHMENT',
+            refType: 'CHATROOM',
+            refId: roomId,
+          });
 
-        const isImageAttachment = selectedFile.type.startsWith('image/');
-        const payload: SendChatMessagePayload = isImageAttachment
-          ? {
-              roomId,
-              type: 'IMAGE',
-              content: null,
-              s3Key: uploaded.s3Key,
-            }
-          : {
-              roomId,
-              type: 'FILE',
-              // Backend FILE 저장 로직은 content 필드를 사용합니다.
-              content: uploaded.s3Key,
-              s3Key: uploaded.s3Key,
-            };
+          const isImageAttachment = ALLOWED_IMAGE_MIME_TYPES.has(file.type);
+          const payload: SendChatMessagePayload = isImageAttachment
+            ? {
+                roomId,
+                type: 'IMAGE',
+                content: null,
+                s3Key: uploaded.s3Key,
+              }
+            : {
+                roomId,
+                type: 'FILE',
+                // Backend FILE 저장 로직은 content 필드를 사용합니다.
+                content: uploaded.s3Key,
+                s3Key: uploaded.s3Key,
+              };
 
-        const published = chatStompManager.publishJson(MESSAGE_SEND_DESTINATION, payload);
-        if (!published) {
-          toast('파일 메시지 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.');
-          return;
+          const published = chatStompManager.publishJson(MESSAGE_SEND_DESTINATION, payload);
+          if (!published) {
+            toast('첨부 메시지 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+            return;
+          }
         }
       } catch (error) {
         const err = error as Error;
@@ -915,6 +979,10 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
                 isLongText && !isExpanded
                   ? `${fullContent.slice(0, LONG_MESSAGE_THRESHOLD)}...`
                   : fullContent;
+              const imageUrl =
+                !message.isDeleted && message.type === 'IMAGE'
+                  ? resolveChatAssetUrl(message.s3Key)
+                  : null;
 
               return (
                 <div key={message.messageId}>
@@ -956,6 +1024,39 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
                         <div className="mx-auto rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-center text-[11px] text-neutral-600">
                           {message.isDeleted ? '삭제된 시스템 메시지입니다.' : displayedContent}
                         </div>
+                      ) : message.type === 'IMAGE' && !message.isDeleted ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!imageUrl) {
+                              toast('이미지를 불러올 수 없습니다.');
+                              return;
+                            }
+                            setImagePreview({
+                              src: imageUrl,
+                              alt: `${message.sender?.nickname ?? '채팅'} 이미지`,
+                            });
+                          }}
+                          className={clsx(
+                            'block overflow-hidden rounded-2xl border bg-white',
+                            isMine ? 'border-[#0F172A]' : 'border-neutral-200',
+                          )}
+                        >
+                          {imageUrl ? (
+                            <Image
+                              src={imageUrl}
+                              alt={`${message.sender?.nickname ?? '채팅'} 이미지`}
+                              width={240}
+                              height={240}
+                              className="max-h-[220px] w-auto max-w-[220px] object-cover"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="flex h-[140px] w-[180px] items-center justify-center bg-neutral-100 text-xs font-medium text-neutral-500">
+                              이미지를 불러올 수 없습니다
+                            </div>
+                          )}
+                        </button>
                       ) : (
                         <div
                           className={clsx(
@@ -1032,6 +1133,8 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
           ref={attachmentInputRef}
           type="file"
           className="hidden"
+          multiple
+          accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
           onChange={(event) => {
             void handleAttachmentChange(event);
           }}
@@ -1065,6 +1168,34 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
           전송
         </button>
       </form>
+
+      {imagePreview ? (
+        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/80 p-4">
+          <button
+            type="button"
+            aria-label="이미지 닫기"
+            onClick={() => setImagePreview(null)}
+            className="absolute inset-0"
+          />
+          <div className="relative z-10 flex max-h-full max-w-full items-center justify-center">
+            <Image
+              src={imagePreview.src}
+              alt={imagePreview.alt}
+              width={1280}
+              height={1280}
+              className="max-h-[85vh] w-auto max-w-[92vw] rounded-xl object-contain"
+              unoptimized
+            />
+            <button
+              type="button"
+              onClick={() => setImagePreview(null)}
+              className="absolute top-2 right-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {isSettingsOpen ? (
         <div className="fixed inset-0 z-[180] flex items-end justify-center">
