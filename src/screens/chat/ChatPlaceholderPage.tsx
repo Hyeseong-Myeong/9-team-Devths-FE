@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { MessageSquarePlus, Plus } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef } from 'react';
@@ -156,6 +156,7 @@ export default function ChatPlaceholderPage() {
       })
       .sort(compareRoomsByLastMessage);
   }, [data]);
+  const isEmptyState = !isLoading && !isError && rooms.length === 0;
 
   useEffect(() => {
     setOptions({
@@ -267,14 +268,7 @@ export default function ChatPlaceholderPage() {
 
   return (
     <>
-      <main className="px-3 pt-4 pb-24">
-        <section className="rounded-2xl border border-neutral-200 bg-white px-4 py-3">
-          <p className="text-sm font-semibold text-neutral-900">참여중인 채팅방 목록</p>
-          <span className="mt-2 inline-flex rounded-full bg-neutral-900 px-3 py-1 text-xs font-semibold text-white">
-            개인
-          </span>
-        </section>
-
+      <main className={isEmptyState ? '' : 'px-3 pt-4 pb-24'}>
         {isLoading ? (
           <div className="mt-4 flex h-[40vh] items-center justify-center rounded-2xl border border-neutral-200 bg-white text-sm text-neutral-500">
             채팅방 목록을 불러오는 중입니다...
@@ -296,10 +290,27 @@ export default function ChatPlaceholderPage() {
           </div>
         ) : null}
 
-        {!isLoading && !isError && rooms.length === 0 ? (
-          <div className="mt-4 flex h-[40vh] items-center justify-center rounded-2xl border border-neutral-200 bg-white text-sm text-neutral-500">
-            참여 중인 채팅방이 없습니다
-          </div>
+        {isEmptyState ? (
+          <section className="flex min-h-[calc(100dvh-56px-64px)] flex-col items-center justify-center px-5 text-center">
+            <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-[#00C473]/10">
+              <MessageSquarePlus className="h-12 w-12 text-[#00C473]" strokeWidth={1.5} />
+            </div>
+            <h2 className="mt-8 text-[22px] font-bold tracking-tight text-[#191F28]">
+              참여 중인 채팅방이 없습니다
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-[#8B95A1]">
+              새 채팅방을 만들어
+              <br />
+              유저와 대화를 시작해보세요
+            </p>
+            <button
+              type="button"
+              onClick={() => requestNavigation(() => router.push('/chat/new'))}
+              className="mt-10 inline-flex h-14 w-full max-w-[280px] items-center justify-center rounded-2xl bg-[#00C473] text-[17px] font-semibold text-white transition-colors active:bg-[#00A85F]"
+            >
+              새 채팅 시작하기
+            </button>
+          </section>
         ) : null}
 
         {!isLoading && !isError && rooms.length > 0 ? (
@@ -372,6 +383,7 @@ export default function ChatPlaceholderPage() {
             onClick={() => requestNavigation(() => router.push('/chat/new'))}
             aria-label="채팅방 생성"
             className="pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-b from-[#1CD48A] to-[#05C075] text-white shadow-[0_12px_24px_rgba(5,192,117,0.35)] ring-1 ring-white/60 transition hover:scale-105 hover:from-[#2DE09A] hover:to-[#07B374] active:translate-y-0.5"
+            hidden={!(!isLoading && !isError && rooms.length > 0)}
           >
             <Plus className="h-5 w-5" />
           </button>
