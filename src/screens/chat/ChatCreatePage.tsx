@@ -218,22 +218,25 @@ export default function ChatCreatePage() {
     }
   };
 
+  const isCompleteEnabled =
+    !createPrivateRoomMutation.isPending && activeSelectedUserId !== null;
+
   return (
-    <main className="px-3 pt-4 pb-24">
-      <section className="rounded-2xl border border-neutral-200 bg-white px-4 py-3">
-        <p className="text-sm font-semibold text-neutral-900">유저 검색</p>
+    <main className="px-4 pt-4 pb-24">
+      <section>
+        <p className="px-1 text-sm font-semibold text-[#191F28]">유저 검색</p>
         <form onSubmit={handleSearchSubmit} className="mt-2">
-          <div className="flex items-center gap-2 rounded-xl border border-neutral-200 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-4 py-3">
             <input
               value={inputValue}
               onChange={(event) => setInputValue(event.target.value)}
               placeholder="이름을 입력하세요"
-              className="h-6 w-full border-0 bg-transparent text-sm text-neutral-900 outline-none placeholder:text-neutral-400"
+              className="h-6 w-full border-0 bg-transparent text-sm text-[#191F28] outline-none placeholder:text-[#8B95A1]"
               maxLength={MAX_NICKNAME_LENGTH}
             />
             <button
               type="submit"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#00C473]/10 text-[#00C473] transition hover:bg-[#00C473]/15"
               aria-label="유저 검색"
             >
               <Search className="h-4 w-4" />
@@ -242,15 +245,15 @@ export default function ChatCreatePage() {
         </form>
       </section>
 
-      <section className="mt-4 rounded-2xl border border-neutral-200 bg-white px-4 py-3">
-        <p className="text-sm font-semibold text-neutral-900">
+      <section className="mt-6">
+        <p className="px-1 text-sm font-semibold text-[#191F28]">
           팔로잉 유저 목록 <span className="text-red-500">*</span>
         </p>
 
         {isLoading ? (
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 space-y-1.5">
             {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="flex items-center gap-3 py-2">
+              <div key={index} className="flex items-center gap-3 rounded-2xl px-2 py-3">
                 <div className="h-10 w-10 animate-pulse rounded-full bg-neutral-200" />
                 <div className="h-4 w-28 animate-pulse rounded bg-neutral-200" />
               </div>
@@ -259,12 +262,12 @@ export default function ChatCreatePage() {
         ) : null}
 
         {!isLoading && isError ? (
-          <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-6 text-center">
-            <p className="text-sm text-neutral-700">팔로잉 목록을 불러오지 못했습니다.</p>
+          <div className="mt-4 px-2 py-8 text-center">
+            <p className="text-sm text-[#6B7684]">팔로잉 목록을 불러오지 못했습니다.</p>
             <button
               type="button"
               onClick={() => void refetch()}
-              className="mt-2 rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white"
+              className="mt-3 rounded-xl bg-[#191F28] px-4 py-2 text-xs font-semibold text-white"
             >
               다시 시도
             </button>
@@ -272,14 +275,14 @@ export default function ChatCreatePage() {
         ) : null}
 
         {!isLoading && !isError && followings.length === 0 ? (
-          <p className="mt-3 py-6 text-center text-sm text-neutral-500">
+          <p className="mt-4 px-2 py-8 text-center text-sm text-[#8B95A1]">
             조건에 맞는 팔로잉 유저가 없습니다.
           </p>
         ) : null}
 
         {!isLoading && !isError && followings.length > 0 ? (
           <div className="mt-2">
-            <ul className="divide-y divide-neutral-100">
+            <ul className="divide-y divide-neutral-200">
               {followings.map((following) => {
                 const isSelected = activeSelectedUserId === following.userId;
                 return (
@@ -287,7 +290,10 @@ export default function ChatCreatePage() {
                     <button
                       type="button"
                       onClick={() => handleSelectUser(following.userId)}
-                      className="flex w-full items-center gap-3 py-3 text-left"
+                      className={[
+                        'flex w-full items-center gap-3 rounded-2xl px-2 py-3 text-left transition',
+                        isSelected ? 'bg-[#00C473]/5' : 'hover:bg-neutral-50',
+                      ].join(' ')}
                     >
                       {following.profileImage ? (
                         <Image
@@ -301,15 +307,15 @@ export default function ChatCreatePage() {
                         <div className="h-10 w-10 rounded-full bg-neutral-200" />
                       )}
 
-                      <p className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-900">
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#191F28]">
                         {following.nickname}
                       </p>
 
                       <span
                         className={`inline-flex h-6 w-6 items-center justify-center rounded-full border transition ${
                           isSelected
-                            ? 'border-neutral-900 bg-white text-neutral-900'
-                            : 'border-neutral-400 bg-white text-transparent'
+                            ? 'border-[#00C473] bg-white text-[#00C473]'
+                            : 'border-neutral-300 bg-white text-transparent'
                         }`}
                         aria-hidden="true"
                       >
@@ -333,12 +339,17 @@ export default function ChatCreatePage() {
         ) : null}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-neutral-200 bg-white px-4 py-5">
+      <section className="mt-6">
         <button
           type="button"
           onClick={handleComplete}
-          disabled={createPrivateRoomMutation.isPending || activeSelectedUserId === null}
-          className="mx-auto block h-11 w-full max-w-[180px] rounded-lg bg-neutral-900 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
+          disabled={!isCompleteEnabled}
+          className={[
+            'block h-14 w-full rounded-2xl text-[17px] font-semibold text-white transition-colors',
+            isCompleteEnabled
+              ? 'bg-[#00C473] active:bg-[#00A85F]'
+              : 'cursor-not-allowed bg-[#C8CDD2]',
+          ].join(' ')}
         >
           {createPrivateRoomMutation.isPending ? '생성 중...' : '완료'}
         </button>
