@@ -731,15 +731,13 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         roomName: isPrivateRoom ? undefined : trimmedRoomName || undefined,
       });
       toast('채팅방 설정이 저장되었습니다.');
-      if (roomId !== null) {
-        const params = new URLSearchParams();
-        const from = searchParams.get('from');
-        if (from) {
-          params.set('from', from);
-        }
-        const suffix = params.toString();
-        router.push(`/chat/${roomId}${suffix ? `?${suffix}` : ''}`);
+      const params = new URLSearchParams();
+      const from = searchParams.get('from');
+      if (from) {
+        params.set('from', from);
       }
+      const suffix = params.toString();
+      router.push(`/chat/${roomId}${suffix ? `?${suffix}` : ''}`);
     } catch (error) {
       const err = error as Error & { serverMessage?: string };
       toast(err.serverMessage ?? '채팅방 설정 저장에 실패했습니다.');
