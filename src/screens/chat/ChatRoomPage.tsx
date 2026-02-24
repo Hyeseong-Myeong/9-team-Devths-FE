@@ -192,7 +192,6 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   const [messageInput, setMessageInput] = useState('');
   const [expandedMessageIds, setExpandedMessageIds] = useState<Set<number>>(new Set());
   const [deleteTargetMessageId, setDeleteTargetMessageId] = useState<number | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isParticipantsModalOpen, setIsParticipantsModalOpen] = useState(false);
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
   const [isLeavingRoom, setIsLeavingRoom] = useState(false);
@@ -211,6 +210,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     src: string;
     alt: string;
   } | null>(null);
+  const isSettingsPage = searchParams.get('settings') === '1';
   const activeRoomId = isLeavingRoom ? null : roomId;
   const { data, isLoading, isError, refetch } = useChatRoomDetailQuery(activeRoomId);
   const hasLoadedFollowingsRef = useRef(false);
@@ -699,7 +699,6 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
         }
 
         setIsParticipantsModalOpen(false);
-        setIsSettingsOpen(false);
         router.push(`/chat/${responseData.roomId}`);
       } catch (error) {
         const err = error as Error & { serverMessage?: string };
@@ -731,12 +730,28 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
         roomName: isPrivateRoom ? undefined : trimmedRoomName || undefined,
       });
       toast('채팅방 설정이 저장되었습니다.');
-      setIsSettingsOpen(false);
+      if (roomId !== null) {
+        const params = new URLSearchParams();
+        const from = searchParams.get('from');
+        if (from) {
+          params.set('from', from);
+        }
+        const suffix = params.toString();
+        router.push(`/chat/${roomId}${suffix ? `?${suffix}` : ''}`);
+      }
     } catch (error) {
       const err = error as Error & { serverMessage?: string };
       toast(err.serverMessage ?? '채팅방 설정 저장에 실패했습니다.');
     }
-  }, [isAlarmOnInput, isPrivateRoom, putRoomSettingsMutation, roomId, roomNameInput]);
+  }, [
+    isAlarmOnInput,
+    isPrivateRoom,
+    putRoomSettingsMutation,
+    roomId,
+    roomNameInput,
+    router,
+    searchParams,
+  ]);
 
   const handleLeaveChatRoom = useCallback(async () => {
     if (roomId === null || leaveChatRoomMutation.isPending) {
@@ -747,7 +762,6 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
       setIsLeavingRoom(true);
       await leaveChatRoomMutation.mutateAsync();
       setIsLeaveConfirmOpen(false);
-      setIsSettingsOpen(false);
       toast('채팅방에서 나갔습니다.');
       router.push('/chat');
     } catch (error) {
@@ -762,8 +776,18 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
       return;
     }
     setIsParticipantsModalOpen(false);
-    setIsSettingsOpen(false);
-  }, [putRoomSettingsMutation.isPending]);
+    if (roomId === null) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+    const from = searchParams.get('from');
+    if (from) {
+      params.set('from', from);
+    }
+    const suffix = params.toString();
+    router.push(`/chat/${roomId}${suffix ? `?${suffix}` : ''}`);
+  }, [putRoomSettingsMutation.isPending, roomId, router, searchParams]);
 
   const handleBackClick = useCallback(() => {
     const from = searchParams.get('from');
@@ -774,8 +798,19 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
   }, [queryClient, router, searchParams]);
 
   const handleSettingsClick = useCallback(() => {
-    setIsSettingsOpen(true);
-  }, []);
+    if (roomId === null) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+    const from = searchParams.get('from');
+    if (from) {
+      params.set('from', from);
+    }
+    params.set('settings', '1');
+
+    router.push(`/chat/${roomId}?${params.toString()}`);
+  }, [roomId, router, searchParams]);
 
   const rightSlot = useMemo(
     () => (
@@ -798,14 +833,22 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
 
   useEffect(() => {
     setOptions({
-      title: headerTitle,
+      title: isSettingsPage ? '채팅방 설정' : headerTitle,
       showBackButton: true,
-      onBackClick: handleBackClick,
-      rightSlot,
+      onBackClick: isSettingsPage ? handleCloseSettings : handleBackClick,
+      rightSlot: isSettingsPage ? undefined : rightSlot,
     });
 
     return () => resetOptions();
-  }, [handleBackClick, headerTitle, resetOptions, rightSlot, setOptions]);
+  }, [
+    handleBackClick,
+    handleCloseSettings,
+    headerTitle,
+    isSettingsPage,
+    resetOptions,
+    rightSlot,
+    setOptions,
+  ]);
 
   useEffect(() => {
     hasInitialScrollRef.current = false;
@@ -1426,15 +1469,9 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
         </div>
       ) : null}
 
-      {isSettingsOpen ? (
-        <div className="fixed inset-0 z-[180] flex items-end justify-center">
-          <button
-            type="button"
-            aria-label="설정 닫기"
-            onClick={handleCloseSettings}
-            className="absolute inset-0 bg-black/45"
-          />
-          <section className="relative z-10 w-full max-w-[430px] rounded-t-2xl bg-white p-4 shadow-2xl">
+      {isSettingsPage ? (
+        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto bg-white">
+          <section className="mx-auto w-full max-w-[430px] px-3 pt-4 pb-24">
             <h2 className="text-base font-semibold text-neutral-900">채팅방 설정</h2>
 
             <div className="mt-4 rounded-xl border border-neutral-200 p-3">
