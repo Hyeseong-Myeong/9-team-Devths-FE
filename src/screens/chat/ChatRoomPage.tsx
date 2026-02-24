@@ -55,6 +55,7 @@ import type { IMessage } from '@stomp/stompjs';
 
 type ChatRoomPageProps = Readonly<{
   roomId: number | null;
+  mode?: 'room' | 'settings';
 }>;
 
 type ParticipantUser = Readonly<{
@@ -182,7 +183,7 @@ function parseStompJson<T>(body: string): T | null {
   }
 }
 
-export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
+export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -210,7 +211,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     src: string;
     alt: string;
   } | null>(null);
-  const isSettingsPage = searchParams.get('settings') === '1';
+  const isSettingsPage = mode === 'settings';
   const activeRoomId = isLeavingRoom ? null : roomId;
   const { data, isLoading, isError, refetch } = useChatRoomDetailQuery(activeRoomId);
   const hasLoadedFollowingsRef = useRef(false);
@@ -807,9 +808,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
     if (from) {
       params.set('from', from);
     }
-    params.set('settings', '1');
-
-    router.push(`/chat/${roomId}?${params.toString()}`);
+    router.push(`/chat/${roomId}/settings${params.toString() ? `?${params.toString()}` : ''}`);
   }, [roomId, router, searchParams]);
 
   const rightSlot = useMemo(
