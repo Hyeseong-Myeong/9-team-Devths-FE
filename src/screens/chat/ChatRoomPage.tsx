@@ -1097,168 +1097,168 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
 
                       <div
                         className={clsx(
-                          'flex items-end gap-1.5',
+                          'flex items-start gap-2',
                           isMine ? 'justify-end' : 'justify-start',
                         )}
                       >
                         {isMine ? (
-                          <div className="mb-1 flex items-center gap-1">
-                            {canDeleteMessage ? (
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTargetMessageId(message.messageId)}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 transition hover:bg-neutral-50 hover:text-red-500"
-                                aria-label="메시지 삭제"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            ) : null}
-                            <span className="px-1 text-[11px] text-neutral-400">
-                              {formatMessageTime(message.createdAt)}
-                            </span>
-                          </div>
+                          canDeleteMessage ? (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTargetMessageId(message.messageId)}
+                              className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 transition hover:bg-neutral-50 hover:text-red-500"
+                              aria-label="메시지 삭제"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : null
                         ) : null}
-
-                        {message.type === 'SYSTEM' ? (
-                          <div className="mx-auto rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-center text-[11px] text-neutral-600">
-                            {message.isDeleted ? '삭제된 시스템 메시지입니다.' : displayedContent}
-                          </div>
-                        ) : message.type === 'IMAGE' && !message.isDeleted ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!imageUrl) {
-                                toast('이미지를 불러올 수 없습니다.');
-                                return;
-                              }
-                              setImagePreview({
-                                src: imageUrl,
-                                alt: `${message.sender?.nickname ?? '채팅'} 이미지`,
-                              });
-                            }}
-                            className={clsx(
-                              'block overflow-hidden rounded-2xl border bg-white',
-                              isMine ? 'border-[#0F172A]' : 'border-neutral-200',
-                            )}
-                          >
-                            {imageUrl ? (
-                              <Image
-                                src={imageUrl}
-                                alt={`${message.sender?.nickname ?? '채팅'} 이미지`}
-                                width={240}
-                                height={240}
-                                className="max-h-[220px] w-auto max-w-[220px] object-cover"
-                                unoptimized
-                              />
-                            ) : (
-                              <div className="flex h-[140px] w-[180px] items-center justify-center bg-neutral-100 text-xs font-medium text-neutral-500">
-                                이미지를 불러올 수 없습니다
-                              </div>
-                            )}
-                          </button>
-                        ) : message.type === 'FILE' && !message.isDeleted ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!fileUrl) {
-                                toast('파일을 열 수 없습니다.');
-                                return;
-                              }
-                              window.open(fileUrl, '_blank', 'noopener,noreferrer');
-                            }}
-                            className={clsx(
-                              'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
-                              isMine
-                                ? 'border-[#0F172A] bg-[#0F172A] text-white'
-                                : 'border-neutral-200 bg-white text-neutral-900',
-                            )}
-                          >
-                            <span
+                        <div className={clsx('flex flex-col', isMine ? 'items-end' : 'items-start')}>
+                          {message.type === 'SYSTEM' ? (
+                            <div className="mx-auto rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-center text-[11px] text-neutral-600">
+                              {message.isDeleted ? '삭제된 시스템 메시지입니다.' : displayedContent}
+                            </div>
+                          ) : message.type === 'IMAGE' && !message.isDeleted ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!imageUrl) {
+                                  toast('이미지를 불러올 수 없습니다.');
+                                  return;
+                                }
+                                setImagePreview({
+                                  src: imageUrl,
+                                  alt: `${message.sender?.nickname ?? '채팅'} 이미지`,
+                                });
+                              }}
                               className={clsx(
-                                'inline-flex h-8 w-8 items-center justify-center rounded-full',
-                                isMine ? 'bg-white/15' : 'bg-neutral-100',
+                                'block overflow-hidden rounded-2xl border bg-white',
+                                isMine
+                                  ? 'border-[#05C075] bg-[#05C075]/5'
+                                  : 'border-[#05C075]',
                               )}
                             >
-                              <FileText
+                              {imageUrl ? (
+                                <Image
+                                  src={imageUrl}
+                                  alt={`${message.sender?.nickname ?? '채팅'} 이미지`}
+                                  width={240}
+                                  height={240}
+                                  className="max-h-[220px] w-auto max-w-[220px] object-cover"
+                                  unoptimized
+                                />
+                              ) : (
+                                <div className="flex h-[140px] w-[180px] items-center justify-center bg-neutral-100 text-xs font-medium text-neutral-500">
+                                  이미지를 불러올 수 없습니다
+                                </div>
+                              )}
+                            </button>
+                          ) : message.type === 'FILE' && !message.isDeleted ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!fileUrl) {
+                                  toast('파일을 열 수 없습니다.');
+                                  return;
+                                }
+                                window.open(fileUrl, '_blank', 'noopener,noreferrer');
+                              }}
+                              className={clsx(
+                                'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
+                                isMine
+                                  ? 'border-[#05C075] bg-[#05C075] text-white'
+                                  : 'border-[#05C075] bg-white text-neutral-900',
+                              )}
+                            >
+                              <span
                                 className={clsx(
-                                  'h-4 w-4',
-                                  isMine ? 'text-white' : 'text-neutral-700',
+                                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
+                                  isMine ? 'bg-white/15' : 'bg-[#05C075]/10',
                                 )}
-                              />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold">PDF 파일</p>
+                              >
+                                <FileText
+                                  className={clsx(
+                                    'h-4 w-4',
+                                    isMine ? 'text-white' : 'text-[#05C075]',
+                                  )}
+                                />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold">PDF 파일</p>
+                                <p
+                                  className={clsx(
+                                    'mt-0.5 text-[11px]',
+                                    isMine ? 'text-white/80' : 'text-neutral-500',
+                                  )}
+                                >
+                                  탭하여 열기
+                                </p>
+                              </div>
+                            </button>
+                          ) : (
+                            <div
+                              className={clsx(
+                                'rounded-2xl border px-3 py-2',
+                                message.isDeleted
+                                  ? 'border-neutral-200 bg-neutral-100'
+                                  : isMine
+                                    ? 'border-[#05C075] bg-[#05C075] text-white'
+                                    : 'border-[#05C075] bg-white text-neutral-900',
+                              )}
+                              onMouseDown={
+                                canDeleteMessage
+                                  ? () => startDeleteLongPress(message.messageId)
+                                  : undefined
+                              }
+                              onMouseUp={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
+                              onMouseLeave={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
+                              onTouchStart={
+                                canDeleteMessage
+                                  ? () => startDeleteLongPress(message.messageId)
+                                  : undefined
+                              }
+                              onTouchEnd={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
+                              onTouchCancel={
+                                canDeleteMessage ? clearDeleteLongPressTimer : undefined
+                              }
+                              onContextMenu={
+                                canDeleteMessage
+                                  ? (event) => {
+                                      event.preventDefault();
+                                    }
+                                  : undefined
+                              }
+                            >
                               <p
                                 className={clsx(
-                                  'mt-0.5 text-[11px]',
-                                  isMine ? 'text-neutral-200' : 'text-neutral-500',
+                                  'text-sm break-words whitespace-pre-wrap',
+                                  message.isDeleted ? 'text-neutral-400' : '',
                                 )}
                               >
-                                탭하여 열기
+                                {message.isDeleted ? '삭제된 메시지입니다.' : displayedContent}
                               </p>
+
+                              {!message.isDeleted && isLongText ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandedMessage(message.messageId)}
+                                  className={clsx(
+                                    'mt-1 text-[11px] font-semibold',
+                                    isMine ? 'text-white/80' : 'text-neutral-500',
+                                  )}
+                                >
+                                  {isExpanded ? '접기' : '더보기'}
+                                </button>
+                              ) : null}
                             </div>
-                          </button>
-                        ) : (
-                          <div
-                            className={clsx(
-                              'rounded-2xl border px-3 py-2',
-                              message.isDeleted
-                                ? 'border-neutral-200 bg-neutral-100'
-                                : isMine
-                                  ? 'border-[#0F172A] bg-[#0F172A] text-white'
-                                  : 'border-neutral-200 bg-white text-neutral-900',
-                            )}
-                            onMouseDown={
-                              canDeleteMessage
-                                ? () => startDeleteLongPress(message.messageId)
-                                : undefined
-                            }
-                            onMouseUp={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
-                            onMouseLeave={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
-                            onTouchStart={
-                              canDeleteMessage
-                                ? () => startDeleteLongPress(message.messageId)
-                                : undefined
-                            }
-                            onTouchEnd={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
-                            onTouchCancel={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
-                            onContextMenu={
-                              canDeleteMessage
-                                ? (event) => {
-                                    event.preventDefault();
-                                  }
-                                : undefined
-                            }
-                          >
-                            <p
-                              className={clsx(
-                                'text-sm break-words whitespace-pre-wrap',
-                                message.isDeleted ? 'text-neutral-400' : '',
-                              )}
-                            >
-                              {message.isDeleted ? '삭제된 메시지입니다.' : displayedContent}
-                            </p>
+                          )}
 
-                            {!message.isDeleted && isLongText ? (
-                              <button
-                                type="button"
-                                onClick={() => toggleExpandedMessage(message.messageId)}
-                                className={clsx(
-                                  'mt-1 text-[11px] font-semibold',
-                                  isMine ? 'text-neutral-200' : 'text-neutral-500',
-                                )}
-                              >
-                                {isExpanded ? '접기' : '더보기'}
-                              </button>
-                            ) : null}
-                          </div>
-                        )}
-
-                        {!isMine ? (
-                          <span className="mb-1 px-1 text-[11px] text-neutral-400">
-                            {formatMessageTime(message.createdAt)}
-                          </span>
-                        ) : null}
+                          {message.type !== 'SYSTEM' ? (
+                            <span className="mt-1 px-1 text-[11px] text-neutral-400">
+                              {formatMessageTime(message.createdAt)}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   </div>
