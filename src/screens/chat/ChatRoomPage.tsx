@@ -9,6 +9,7 @@ import {
   Menu,
   MessageSquarePlus,
   Paperclip,
+  SendHorizonal,
   Trash2,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -220,6 +221,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   const fileAttachmentInputRef = useRef<HTMLInputElement>(null);
   const unreadDividerRef = useRef<HTMLDivElement>(null);
   const deleteLongPressTimerRef = useRef<number | null>(null);
+  const isMessageInputComposingRef = useRef(false);
   const initialScrollResyncTimerRef = useRef<number | null>(null);
   const hasInitialScrollRef = useRef(false);
   const isLoadingOlderRef = useRef(false);
@@ -1025,14 +1027,11 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   }
 
   return (
-    <main className="px-3 pt-4 pb-3">
+    <main className="-mx-4 flex h-[calc(100dvh-56px-var(--bottom-nav-h))] flex-col sm:-mx-6">
       <section
         ref={messageListRef}
         onScroll={handleMessageScroll}
-        className="overflow-y-auto rounded-2xl border border-neutral-200 bg-neutral-50 p-3"
-        style={{
-          height: 'calc(100dvh - 56px - var(--bottom-nav-h) - 88px)',
-        }}
+        className="min-h-0 flex-1 overflow-y-auto bg-white px-4 py-4"
       >
         {hasNextPage ? (
           <div className="pb-2 text-center text-[11px] text-neutral-400">
@@ -1110,7 +1109,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
               return (
                 <div key={message.messageId}>
                   {shouldShowDateSeparator ? (
-                    <div className="-mx-3 my-2 flex justify-center px-3 py-1">
+                    <div className="-mx-4 my-2 flex justify-center px-4 py-1">
                       <span className="rounded-full border border-neutral-200 bg-white/95 px-3 py-1 text-[11px] font-medium text-neutral-600">
                         {formatStickyDateLabel(message.createdAt)}
                       </span>
@@ -1319,58 +1318,92 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         ) : null}
       </section>
 
-      <form
-        onSubmit={handleSendMessage}
-        className="mt-2 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2"
-      >
-        <input
-          ref={imageAttachmentInputRef}
-          type="file"
-          className="hidden"
-          multiple
-          accept="image/jpeg,image/jpg,image/png,image/webp"
-          onChange={(event) => {
-            void handleAttachmentChange(event);
-          }}
-        />
-        <input
-          ref={fileAttachmentInputRef}
-          type="file"
-          className="hidden"
-          accept="application/pdf"
-          onChange={(event) => {
-            void handleAttachmentChange(event);
-          }}
-        />
-        <button
-          type="button"
-          onClick={handleAttachmentButtonClick}
-          disabled={isAttachmentUploading}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-not-allowed disabled:text-neutral-300"
-          aria-label="파일 첨부"
-        >
-          {isAttachmentUploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Paperclip className="h-4 w-4" />
-          )}
-        </button>
-        <input
-          value={messageInput}
-          onChange={(event) => setMessageInput(event.target.value)}
-          placeholder="메시지를 입력하세요."
-          className="h-9 flex-1 border-0 bg-transparent text-sm text-neutral-900 outline-none placeholder:text-neutral-400"
-          maxLength={2000}
-          autoComplete="off"
-        />
-        <button
-          type="submit"
-          disabled={!messageInput.trim() || isAttachmentUploading}
-          className="rounded-lg bg-[#0F172A] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
-        >
-          전송
-        </button>
-      </form>
+      <div className="border-t border-neutral-200 bg-white px-3 py-2">
+        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+          <input
+            ref={imageAttachmentInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            onChange={(event) => {
+              void handleAttachmentChange(event);
+            }}
+          />
+          <input
+            ref={fileAttachmentInputRef}
+            type="file"
+            className="hidden"
+            accept="application/pdf"
+            onChange={(event) => {
+              void handleAttachmentChange(event);
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleAttachmentButtonClick}
+            disabled={isAttachmentUploading}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:text-neutral-300"
+            aria-label="파일 첨부"
+          >
+            {isAttachmentUploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Paperclip className="h-5 w-5" />
+            )}
+          </button>
+
+          <div className="flex-1">
+            <textarea
+              value={messageInput}
+              onChange={(event) => setMessageInput(event.target.value.slice(0, 2000))}
+              placeholder="메시지를 입력하세요"
+              className="h-11 w-full resize-none rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-900 transition outline-none placeholder:text-neutral-400 focus:border-[#05C075] focus:ring-2 focus:ring-[#05C075]/20"
+              maxLength={2000}
+              rows={1}
+              onCompositionStart={() => {
+                isMessageInputComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                isMessageInputComposingRef.current = false;
+              }}
+              onKeyDown={(event) => {
+                const isComposing =
+                  isMessageInputComposingRef.current ||
+                  (event.nativeEvent as KeyboardEvent).isComposing;
+                if (isComposing) {
+                  return;
+                }
+
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  if (!messageInput.trim() || isAttachmentUploading) {
+                    return;
+                  }
+                  void handleSendMessage();
+                }
+              }}
+            />
+            <div className="mt-1 text-right text-[11px] text-neutral-400">
+              {messageInput.length}/2000
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!messageInput.trim() || isAttachmentUploading}
+            className={clsx(
+              'inline-flex h-11 w-11 items-center justify-center rounded-2xl transition',
+              !messageInput.trim() || isAttachmentUploading
+                ? 'bg-neutral-200 text-neutral-500'
+                : 'bg-[#05C075] text-white hover:bg-[#049e61]',
+            )}
+            aria-label="전송"
+          >
+            <SendHorizonal className="h-5 w-5" />
+          </button>
+        </form>
+      </div>
 
       {imagePreview ? (
         <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 p-4">
