@@ -218,8 +218,7 @@ export default function ChatCreatePage() {
     }
   };
 
-  const isCompleteEnabled =
-    !createPrivateRoomMutation.isPending && activeSelectedUserId !== null;
+  const isCompleteEnabled = !createPrivateRoomMutation.isPending && activeSelectedUserId !== null;
 
   return (
     <main className="px-4 pt-4 pb-24">

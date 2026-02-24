@@ -2,7 +2,15 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { FileImage, FileText, Loader2, Menu, MessageSquarePlus, Paperclip, Trash2 } from 'lucide-react';
+import {
+  FileImage,
+  FileText,
+  Loader2,
+  Menu,
+  MessageSquarePlus,
+  Paperclip,
+  Trash2,
+} from 'lucide-react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -1024,9 +1032,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
               <MessageSquarePlus className="h-8 w-8 text-[#00C473]" strokeWidth={1.75} />
             </div>
             <p className="mt-5 text-base font-semibold text-[#191F28]">아직 메시지가 없습니다.</p>
-            <p className="mt-2 text-sm text-[#8B95A1]">
-              첫 메시지를 보내 대화를 시작해보세요
-            </p>
+            <p className="mt-2 text-sm text-[#8B95A1]">첫 메시지를 보내 대화를 시작해보세요</p>
           </div>
         ) : null}
 
@@ -1113,7 +1119,9 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
                             </button>
                           ) : null
                         ) : null}
-                        <div className={clsx('flex flex-col', isMine ? 'items-end' : 'items-start')}>
+                        <div
+                          className={clsx('flex flex-col', isMine ? 'items-end' : 'items-start')}
+                        >
                           {message.type === 'SYSTEM' ? (
                             <div className="mx-auto rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-center text-[11px] text-neutral-600">
                               {message.isDeleted ? '삭제된 시스템 메시지입니다.' : displayedContent}
@@ -1133,9 +1141,7 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
                               }}
                               className={clsx(
                                 'block overflow-hidden rounded-2xl border bg-white',
-                                isMine
-                                  ? 'border-[#05C075] bg-[#05C075]/5'
-                                  : 'border-[#05C075]',
+                                isMine ? 'border-[#05C075] bg-[#05C075]/5' : 'border-[#05C075]',
                               )}
                             >
                               {imageUrl ? (
@@ -1211,7 +1217,9 @@ export default function ChatRoomPage({ roomId }: ChatRoomPageProps) {
                                   : undefined
                               }
                               onMouseUp={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
-                              onMouseLeave={canDeleteMessage ? clearDeleteLongPressTimer : undefined}
+                              onMouseLeave={
+                                canDeleteMessage ? clearDeleteLongPressTimer : undefined
+                              }
                               onTouchStart={
                                 canDeleteMessage
                                   ? () => startDeleteLongPress(message.messageId)
