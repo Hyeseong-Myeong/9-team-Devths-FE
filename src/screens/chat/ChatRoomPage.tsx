@@ -1338,9 +1338,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
           <section className="mx-auto min-h-full w-full max-w-[430px] bg-white">
             <div className="mx-auto flex min-h-full w-full max-w-[392px] flex-col px-5 pt-4 pb-6">
               <div>
-                <h2 className="text-base font-semibold text-neutral-900">채팅방 설정</h2>
-
-                <div className="mt-4 divide-y divide-neutral-200">
+                <div className="divide-y divide-neutral-200">
                   <section className="py-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-neutral-900">알림 설정</p>
@@ -1349,7 +1347,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                         onClick={() => setIsAlarmOnInput((prev) => !prev)}
                         className={clsx(
                           'relative inline-flex h-7 w-12 items-center rounded-full transition',
-                          isAlarmOnInput ? 'bg-[#0F172A]' : 'bg-neutral-300',
+                          isAlarmOnInput ? 'bg-[#05C075]' : 'bg-neutral-300',
                         )}
                         aria-label="알림 토글"
                       >
@@ -1450,7 +1448,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                       void handleSaveRoomSettings();
                     }}
                     disabled={putRoomSettingsMutation.isPending}
-                    className="rounded-lg bg-[#0F172A] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                    className="rounded-lg bg-[#05C075] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#049e61] disabled:opacity-60"
                   >
                     {putRoomSettingsMutation.isPending ? '저장 중...' : '저장'}
                   </button>
