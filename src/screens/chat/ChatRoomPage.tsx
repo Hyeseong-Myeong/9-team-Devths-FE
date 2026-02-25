@@ -299,9 +299,16 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         return;
       }
 
+      console.warn('[CHAT][FRAME_RAW]', frame.body);
       const incomingMessage = parseStompJson<ChatMessageResponse>(frame.body);
       if (!incomingMessage || typeof incomingMessage.messageId !== 'number') {
+        console.warn('[CHAT][FRAME_PARSE_ERROR_OR_INVALID_SHAPE]', frame.body);
         return;
+      }
+      console.warn('[CHAT][FRAME_PARSED]', incomingMessage);
+      console.warn('[CHAT][FRAME_TYPE]', incomingMessage.type);
+      if (incomingMessage.type === 'FILE') {
+        console.warn('[CHAT][FILE_MESSAGE_RECEIVED]', incomingMessage);
       }
 
       const roomUpdated = applyRealtimeRoomNotification(queryClient, {
@@ -321,10 +328,15 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         container.scrollHeight - (container.scrollTop + container.clientHeight) <=
           BOTTOM_CONFIRM_THRESHOLD;
 
-      applyRealtimeRoomMessage(queryClient, {
+      const inserted = applyRealtimeRoomMessage(queryClient, {
         roomId,
         size: MESSAGE_PAGE_SIZE,
         message: incomingMessage,
+      });
+      console.warn('[CHAT][CACHE_APPLY]', {
+        inserted,
+        type: incomingMessage.type,
+        messageId: incomingMessage.messageId,
       });
 
       if (shouldStickToBottom) {
@@ -476,6 +488,13 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 content: uploaded.s3Key,
                 s3Key: uploaded.s3Key,
               };
+
+          console.warn('[CHAT][FILE_SEND_PAYLOAD]', {
+            fileName: file.name,
+            fileType: file.type,
+            uploaded,
+            payload,
+          });
 
           const published = chatStompManager.publishJson(MESSAGE_SEND_DESTINATION, payload);
           if (!published) {
@@ -1033,47 +1052,56 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                               )}
                             </button>
                           ) : message.type === 'FILE' && !message.isDeleted ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!fileUrl) {
-                                  toast('파일을 열 수 없습니다.');
-                                  return;
-                                }
-                                window.open(fileUrl, '_blank', 'noopener,noreferrer');
-                              }}
-                              className={clsx(
-                                'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
-                                isMine
-                                  ? 'border-[#05C075] bg-[#05C075] text-white'
-                                  : 'border-[#05C075] bg-white text-neutral-900',
-                              )}
-                            >
-                              <span
+                            <>
+                              {console.warn('[CHAT][FILE_RENDER]', {
+                                messageId: message.messageId,
+                                type: message.type,
+                                content: message.content,
+                                s3Key: message.s3Key,
+                                isDeleted: message.isDeleted,
+                              })}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!fileUrl) {
+                                    toast('파일을 열 수 없습니다.');
+                                    return;
+                                  }
+                                  window.open(fileUrl, '_blank', 'noopener,noreferrer');
+                                }}
                                 className={clsx(
-                                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
-                                  isMine ? 'bg-white/15' : 'bg-[#05C075]/10',
+                                  'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
+                                  isMine
+                                    ? 'border-[#05C075] bg-[#05C075] text-white'
+                                    : 'border-[#05C075] bg-white text-neutral-900',
                                 )}
                               >
-                                <FileText
+                                <span
                                   className={clsx(
-                                    'h-4 w-4',
-                                    isMine ? 'text-white' : 'text-[#05C075]',
-                                  )}
-                                />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold">PDF 파일</p>
-                                <p
-                                  className={clsx(
-                                    'mt-0.5 text-[11px]',
-                                    isMine ? 'text-white/80' : 'text-neutral-500',
+                                    'inline-flex h-8 w-8 items-center justify-center rounded-full',
+                                    isMine ? 'bg-white/15' : 'bg-[#05C075]/10',
                                   )}
                                 >
-                                  탭하여 열기
-                                </p>
-                              </div>
-                            </button>
+                                  <FileText
+                                    className={clsx(
+                                      'h-4 w-4',
+                                      isMine ? 'text-white' : 'text-[#05C075]',
+                                    )}
+                                  />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold">PDF 파일</p>
+                                  <p
+                                    className={clsx(
+                                      'mt-0.5 text-[11px]',
+                                      isMine ? 'text-white/80' : 'text-neutral-500',
+                                    )}
+                                  >
+                                    탭하여 열기
+                                  </p>
+                                </div>
+                              </button>
+                            </>
                           ) : (
                             <div
                               className={clsx(
