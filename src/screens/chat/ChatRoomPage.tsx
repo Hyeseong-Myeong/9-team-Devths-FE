@@ -205,6 +205,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   const isMessageInputComposingRef = useRef(false);
   const initialScrollResyncTimerRef = useRef<number | null>(null);
   const hasInitialScrollRef = useRef(false);
+  const hasNoUnreadInitialBottomResyncedRef = useRef(false);
   const isLoadingOlderRef = useRef(false);
   const prevScrollHeightRef = useRef(0);
   const hasPatchedOnEntryRef = useRef(false);
@@ -683,6 +684,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
 
   useEffect(() => {
     hasInitialScrollRef.current = false;
+    hasNoUnreadInitialBottomResyncedRef.current = false;
     isLoadingOlderRef.current = false;
     prevScrollHeightRef.current = 0;
     hasPatchedOnEntryRef.current = false;
@@ -769,6 +771,39 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       isLoadingOlderRef.current = false;
     }
   }, [messages, unreadStartIndex]);
+
+  useEffect(() => {
+    if (!hasInitialScrollRef.current) {
+      return;
+    }
+
+    if (hasNoUnreadInitialBottomResyncedRef.current) {
+      return;
+    }
+
+    if (messages.length === 0 || unreadStartIndex >= 0) {
+      return;
+    }
+
+    const container = messageListRef.current;
+    if (!container) {
+      return;
+    }
+
+    hasNoUnreadInitialBottomResyncedRef.current = true;
+
+    const timerId = window.setTimeout(() => {
+      const currentContainer = messageListRef.current;
+      if (!currentContainer) {
+        return;
+      }
+      currentContainer.scrollTop = currentContainer.scrollHeight;
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [messages.length, unreadStartIndex]);
 
   useEffect(() => {
     if (roomId === null || isMessagesLoading || isMessagesError || latestMessageId === null) {
