@@ -300,16 +300,9 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         return;
       }
 
-      console.warn('[CHAT][FRAME_RAW]', frame.body);
       const incomingMessage = parseStompJson<ChatMessageResponse>(frame.body);
       if (!incomingMessage || typeof incomingMessage.messageId !== 'number') {
-        console.warn('[CHAT][FRAME_PARSE_ERROR_OR_INVALID_SHAPE]', frame.body);
         return;
-      }
-      console.warn('[CHAT][FRAME_PARSED]', incomingMessage);
-      console.warn('[CHAT][FRAME_TYPE]', incomingMessage.type);
-      if (incomingMessage.type === 'FILE') {
-        console.warn('[CHAT][FILE_MESSAGE_RECEIVED]', incomingMessage);
       }
 
       const roomUpdated = applyRealtimeRoomNotification(queryClient, {
@@ -329,15 +322,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         container.scrollHeight - (container.scrollTop + container.clientHeight) <=
           BOTTOM_CONFIRM_THRESHOLD;
 
-      const inserted = applyRealtimeRoomMessage(queryClient, {
+      applyRealtimeRoomMessage(queryClient, {
         roomId,
         size: MESSAGE_PAGE_SIZE,
         message: incomingMessage,
-      });
-      console.warn('[CHAT][CACHE_APPLY]', {
-        inserted,
-        type: incomingMessage.type,
-        messageId: incomingMessage.messageId,
       });
 
       if (shouldStickToBottom) {
@@ -489,13 +477,6 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 content: uploaded.s3Key,
                 s3Key: uploaded.s3Key,
               };
-
-          console.warn('[CHAT][FILE_SEND_PAYLOAD]', {
-            fileName: file.name,
-            fileType: file.type,
-            uploaded,
-            payload,
-          });
 
           const published = chatStompManager.publishJson(MESSAGE_SEND_DESTINATION, payload);
           if (!published) {
@@ -1001,7 +982,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                     )}
                   >
                     <div
-                      className={clsx('max-w-[78%]', message.type === 'SYSTEM' ? 'max-w-full' : '')}
+                      className={clsx(
+                        'max-w-[78%] min-w-0',
+                        message.type === 'SYSTEM' ? 'max-w-full' : '',
+                      )}
                     >
                       {!isMine &&
                       !isPrivateRoom &&
@@ -1047,7 +1031,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                           )
                         ) : null}
                         <div
-                          className={clsx('flex flex-col', isMine ? 'items-end' : 'items-start')}
+                          className={clsx(
+                            'flex min-w-0 flex-col',
+                            isMine ? 'items-end' : 'items-start',
+                          )}
                         >
                           {message.type === 'SYSTEM' ? (
                             <div className="mx-auto rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-center text-[11px] text-neutral-600">
@@ -1087,60 +1074,51 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                               )}
                             </button>
                           ) : message.type === 'FILE' && !message.isDeleted ? (
-                            <>
-                              {console.warn('[CHAT][FILE_RENDER]', {
-                                messageId: message.messageId,
-                                type: message.type,
-                                content: message.content,
-                                s3Key: message.s3Key,
-                                isDeleted: message.isDeleted,
-                              })}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!fileUrl) {
-                                    toast('파일을 열 수 없습니다.');
-                                    return;
-                                  }
-                                  window.open(fileUrl, '_blank', 'noopener,noreferrer');
-                                }}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!fileUrl) {
+                                  toast('파일을 열 수 없습니다.');
+                                  return;
+                                }
+                                window.open(fileUrl, '_blank', 'noopener,noreferrer');
+                              }}
+                              className={clsx(
+                                'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
+                                isMine
+                                  ? 'border-[#05C075] bg-[#05C075] text-white'
+                                  : 'border-[#05C075] bg-white text-neutral-900',
+                              )}
+                            >
+                              <span
                                 className={clsx(
-                                  'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
-                                  isMine
-                                    ? 'border-[#05C075] bg-[#05C075] text-white'
-                                    : 'border-[#05C075] bg-white text-neutral-900',
+                                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
+                                  isMine ? 'bg-white/15' : 'bg-[#05C075]/10',
                                 )}
                               >
-                                <span
+                                <FileText
                                   className={clsx(
-                                    'inline-flex h-8 w-8 items-center justify-center rounded-full',
-                                    isMine ? 'bg-white/15' : 'bg-[#05C075]/10',
+                                    'h-4 w-4',
+                                    isMine ? 'text-white' : 'text-[#05C075]',
+                                  )}
+                                />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold">PDF 파일</p>
+                                <p
+                                  className={clsx(
+                                    'mt-0.5 text-[11px]',
+                                    isMine ? 'text-white/80' : 'text-neutral-500',
                                   )}
                                 >
-                                  <FileText
-                                    className={clsx(
-                                      'h-4 w-4',
-                                      isMine ? 'text-white' : 'text-[#05C075]',
-                                    )}
-                                  />
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold">PDF 파일</p>
-                                  <p
-                                    className={clsx(
-                                      'mt-0.5 text-[11px]',
-                                      isMine ? 'text-white/80' : 'text-neutral-500',
-                                    )}
-                                  >
-                                    탭하여 열기
-                                  </p>
-                                </div>
-                              </button>
-                            </>
+                                  탭하여 열기
+                                </p>
+                              </div>
+                            </button>
                           ) : (
                             <div
                               className={clsx(
-                                'rounded-2xl border px-3 py-2',
+                                'max-w-full rounded-2xl border px-3 py-2',
                                 message.isDeleted
                                   ? 'border-neutral-200 bg-neutral-100'
                                   : isMine
@@ -1399,7 +1377,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       ) : null}
 
       {isSettingsPage ? (
-        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto">
+        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto bg-white">
           <section className="mx-auto min-h-full w-full max-w-[430px] bg-white">
             <div className="mx-auto flex min-h-full w-full max-w-[392px] flex-col px-5 pt-4 pb-6">
               <div>
@@ -1502,10 +1480,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={handleCloseSettings}
-                    className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                    onClick={() => setIsLeaveConfirmOpen(true)}
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
                   >
-                    닫기
+                    채팅방 나가기
                   </button>
                   <button
                     type="button"
@@ -1516,16 +1494,6 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                     className="rounded-lg bg-[#05C075] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#049e61] disabled:opacity-60"
                   >
                     {putRoomSettingsMutation.isPending ? '저장 중...' : '저장'}
-                  </button>
-                </div>
-
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsLeaveConfirmOpen(true)}
-                    className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
-                  >
-                    채팅방 나가기
                   </button>
                 </div>
               </div>
