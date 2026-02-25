@@ -1150,7 +1150,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         ) : null}
       </section>
 
-      <div className="border-t border-neutral-200 bg-white px-3 py-2">
+      <div className="border-t border-neutral-200 bg-white px-3 pt-2 pb-5">
         <form onSubmit={handleSendMessage} className="flex items-end gap-2">
           <input
             ref={imageAttachmentInputRef}
@@ -1216,24 +1216,26 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 }
               }}
             />
-            <div className="mt-1 text-right text-[11px] text-neutral-400">
+          </div>
+
+          <div className="relative h-11 w-11 shrink-0">
+            <button
+              type="submit"
+              disabled={!messageInput.trim() || isAttachmentUploading}
+              className={clsx(
+                'inline-flex h-11 w-11 items-center justify-center rounded-2xl transition',
+                !messageInput.trim() || isAttachmentUploading
+                  ? 'bg-neutral-200 text-neutral-500'
+                  : 'bg-[#05C075] text-white hover:bg-[#049e61]',
+              )}
+              aria-label="전송"
+            >
+              <SendHorizonal className="h-5 w-5" />
+            </button>
+            <div className="absolute top-full left-1/2 mt-1 -translate-x-1/2 text-center text-[11px] text-neutral-400">
               {messageInput.length}/2000
             </div>
           </div>
-
-          <button
-            type="submit"
-            disabled={!messageInput.trim() || isAttachmentUploading}
-            className={clsx(
-              'inline-flex h-11 w-11 items-center justify-center rounded-2xl transition',
-              !messageInput.trim() || isAttachmentUploading
-                ? 'bg-neutral-200 text-neutral-500'
-                : 'bg-[#05C075] text-white hover:bg-[#049e61]',
-            )}
-            aria-label="전송"
-          >
-            <SendHorizonal className="h-5 w-5" />
-          </button>
         </form>
       </div>
 
