@@ -1140,7 +1140,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                             >
                               <p
                                 className={clsx(
-                                  'text-sm break-words whitespace-pre-wrap',
+                                  'text-sm [overflow-wrap:anywhere] break-words whitespace-pre-wrap',
                                   message.isDeleted ? 'text-neutral-400' : '',
                                 )}
                               >
