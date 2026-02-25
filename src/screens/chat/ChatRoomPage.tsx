@@ -205,6 +205,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   const isMessageInputComposingRef = useRef(false);
   const initialScrollResyncTimerRef = useRef<number | null>(null);
   const hasInitialScrollRef = useRef(false);
+  const hasNoUnreadInitialBottomResyncedRef = useRef(false);
   const isLoadingOlderRef = useRef(false);
   const prevScrollHeightRef = useRef(0);
   const hasPatchedOnEntryRef = useRef(false);
@@ -299,9 +300,16 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         return;
       }
 
+      console.warn('[CHAT][FRAME_RAW]', frame.body);
       const incomingMessage = parseStompJson<ChatMessageResponse>(frame.body);
       if (!incomingMessage || typeof incomingMessage.messageId !== 'number') {
+        console.warn('[CHAT][FRAME_PARSE_ERROR_OR_INVALID_SHAPE]', frame.body);
         return;
+      }
+      console.warn('[CHAT][FRAME_PARSED]', incomingMessage);
+      console.warn('[CHAT][FRAME_TYPE]', incomingMessage.type);
+      if (incomingMessage.type === 'FILE') {
+        console.warn('[CHAT][FILE_MESSAGE_RECEIVED]', incomingMessage);
       }
 
       const roomUpdated = applyRealtimeRoomNotification(queryClient, {
@@ -321,10 +329,15 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         container.scrollHeight - (container.scrollTop + container.clientHeight) <=
           BOTTOM_CONFIRM_THRESHOLD;
 
-      applyRealtimeRoomMessage(queryClient, {
+      const inserted = applyRealtimeRoomMessage(queryClient, {
         roomId,
         size: MESSAGE_PAGE_SIZE,
         message: incomingMessage,
+      });
+      console.warn('[CHAT][CACHE_APPLY]', {
+        inserted,
+        type: incomingMessage.type,
+        messageId: incomingMessage.messageId,
       });
 
       if (shouldStickToBottom) {
@@ -476,6 +489,13 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 content: uploaded.s3Key,
                 s3Key: uploaded.s3Key,
               };
+
+          console.warn('[CHAT][FILE_SEND_PAYLOAD]', {
+            fileName: file.name,
+            fileType: file.type,
+            uploaded,
+            payload,
+          });
 
           const published = chatStompManager.publishJson(MESSAGE_SEND_DESTINATION, payload);
           if (!published) {
@@ -664,6 +684,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
 
   useEffect(() => {
     hasInitialScrollRef.current = false;
+    hasNoUnreadInitialBottomResyncedRef.current = false;
     isLoadingOlderRef.current = false;
     prevScrollHeightRef.current = 0;
     hasPatchedOnEntryRef.current = false;
@@ -750,6 +771,39 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       isLoadingOlderRef.current = false;
     }
   }, [messages, unreadStartIndex]);
+
+  useEffect(() => {
+    if (!hasInitialScrollRef.current) {
+      return;
+    }
+
+    if (hasNoUnreadInitialBottomResyncedRef.current) {
+      return;
+    }
+
+    if (messages.length === 0 || unreadStartIndex >= 0) {
+      return;
+    }
+
+    const container = messageListRef.current;
+    if (!container) {
+      return;
+    }
+
+    hasNoUnreadInitialBottomResyncedRef.current = true;
+
+    const timerId = window.setTimeout(() => {
+      const currentContainer = messageListRef.current;
+      if (!currentContainer) {
+        return;
+      }
+      currentContainer.scrollTop = currentContainer.scrollHeight;
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [messages.length, unreadStartIndex]);
 
   useEffect(() => {
     if (roomId === null || isMessagesLoading || isMessagesError || latestMessageId === null) {
@@ -897,6 +951,8 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 formatDateKey(prevMessage.createdAt) !== formatDateKey(message.createdAt);
               const shouldShowLastReadDivider = index === unreadStartIndex;
               const isMine = message.sender?.userId === currentUserId;
+              const shouldShowCounterpartAvatar =
+                isPrivateRoom && !isMine && message.type !== 'SYSTEM';
               const canDeleteMessage = isMine && !message.isDeleted && message.type !== 'SYSTEM';
               const isLongText =
                 !message.isDeleted &&
@@ -947,7 +1003,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                     <div
                       className={clsx('max-w-[78%]', message.type === 'SYSTEM' ? 'max-w-full' : '')}
                     >
-                      {!isMine && message.type !== 'SYSTEM' && message.sender?.nickname ? (
+                      {!isMine &&
+                      !isPrivateRoom &&
+                      message.type !== 'SYSTEM' &&
+                      message.sender?.nickname ? (
                         <p className="mb-1 px-1 text-[11px] text-neutral-500">
                           {message.sender.nickname}
                         </p>
@@ -970,6 +1029,22 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                               <Trash2 className="h-4 w-4" />
                             </button>
                           ) : null
+                        ) : null}
+                        {shouldShowCounterpartAvatar ? (
+                          message.sender?.profileImage ? (
+                            <Image
+                              src={message.sender.profileImage}
+                              alt={`${message.sender.nickname ?? '상대방'} 프로필`}
+                              width={32}
+                              height={32}
+                              className="mt-1 h-8 w-8 shrink-0 rounded-full border border-neutral-200 object-cover"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 text-xs font-semibold text-neutral-600">
+                              {(message.sender?.nickname ?? '?').slice(0, 1)}
+                            </div>
+                          )
                         ) : null}
                         <div
                           className={clsx('flex flex-col', isMine ? 'items-end' : 'items-start')}
@@ -1012,47 +1087,56 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                               )}
                             </button>
                           ) : message.type === 'FILE' && !message.isDeleted ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!fileUrl) {
-                                  toast('파일을 열 수 없습니다.');
-                                  return;
-                                }
-                                window.open(fileUrl, '_blank', 'noopener,noreferrer');
-                              }}
-                              className={clsx(
-                                'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
-                                isMine
-                                  ? 'border-[#05C075] bg-[#05C075] text-white'
-                                  : 'border-[#05C075] bg-white text-neutral-900',
-                              )}
-                            >
-                              <span
+                            <>
+                              {console.warn('[CHAT][FILE_RENDER]', {
+                                messageId: message.messageId,
+                                type: message.type,
+                                content: message.content,
+                                s3Key: message.s3Key,
+                                isDeleted: message.isDeleted,
+                              })}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!fileUrl) {
+                                    toast('파일을 열 수 없습니다.');
+                                    return;
+                                  }
+                                  window.open(fileUrl, '_blank', 'noopener,noreferrer');
+                                }}
                                 className={clsx(
-                                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
-                                  isMine ? 'bg-white/15' : 'bg-[#05C075]/10',
+                                  'flex min-w-[180px] items-center gap-2 rounded-2xl border px-3 py-2 text-left',
+                                  isMine
+                                    ? 'border-[#05C075] bg-[#05C075] text-white'
+                                    : 'border-[#05C075] bg-white text-neutral-900',
                                 )}
                               >
-                                <FileText
+                                <span
                                   className={clsx(
-                                    'h-4 w-4',
-                                    isMine ? 'text-white' : 'text-[#05C075]',
-                                  )}
-                                />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold">PDF 파일</p>
-                                <p
-                                  className={clsx(
-                                    'mt-0.5 text-[11px]',
-                                    isMine ? 'text-white/80' : 'text-neutral-500',
+                                    'inline-flex h-8 w-8 items-center justify-center rounded-full',
+                                    isMine ? 'bg-white/15' : 'bg-[#05C075]/10',
                                   )}
                                 >
-                                  탭하여 열기
-                                </p>
-                              </div>
-                            </button>
+                                  <FileText
+                                    className={clsx(
+                                      'h-4 w-4',
+                                      isMine ? 'text-white' : 'text-[#05C075]',
+                                    )}
+                                  />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold">PDF 파일</p>
+                                  <p
+                                    className={clsx(
+                                      'mt-0.5 text-[11px]',
+                                      isMine ? 'text-white/80' : 'text-neutral-500',
+                                    )}
+                                  >
+                                    탭하여 열기
+                                  </p>
+                                </div>
+                              </button>
+                            </>
                           ) : (
                             <div
                               className={clsx(
@@ -1091,7 +1175,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                             >
                               <p
                                 className={clsx(
-                                  'text-sm break-words whitespace-pre-wrap',
+                                  'text-sm [overflow-wrap:anywhere] break-words whitespace-pre-wrap',
                                   message.isDeleted ? 'text-neutral-400' : '',
                                 )}
                               >
@@ -1129,7 +1213,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         ) : null}
       </section>
 
-      <div className="border-t border-neutral-200 bg-white px-3 py-2">
+      <div className="border-t border-neutral-200 bg-white px-3 pt-2 pb-5">
         <form onSubmit={handleSendMessage} className="flex items-end gap-2">
           <input
             ref={imageAttachmentInputRef}
@@ -1195,24 +1279,26 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 }
               }}
             />
-            <div className="mt-1 text-right text-[11px] text-neutral-400">
+          </div>
+
+          <div className="relative h-11 w-11 shrink-0">
+            <button
+              type="submit"
+              disabled={!messageInput.trim() || isAttachmentUploading}
+              className={clsx(
+                'inline-flex h-11 w-11 items-center justify-center rounded-2xl transition',
+                !messageInput.trim() || isAttachmentUploading
+                  ? 'bg-neutral-200 text-neutral-500'
+                  : 'bg-[#05C075] text-white hover:bg-[#049e61]',
+              )}
+              aria-label="전송"
+            >
+              <SendHorizonal className="h-5 w-5" />
+            </button>
+            <div className="absolute top-full left-1/2 mt-1 -translate-x-1/2 text-center text-[11px] text-neutral-400">
               {messageInput.length}/2000
             </div>
           </div>
-
-          <button
-            type="submit"
-            disabled={!messageInput.trim() || isAttachmentUploading}
-            className={clsx(
-              'inline-flex h-11 w-11 items-center justify-center rounded-2xl transition',
-              !messageInput.trim() || isAttachmentUploading
-                ? 'bg-neutral-200 text-neutral-500'
-                : 'bg-[#05C075] text-white hover:bg-[#049e61]',
-            )}
-            aria-label="전송"
-          >
-            <SendHorizonal className="h-5 w-5" />
-          </button>
         </form>
       </div>
 
@@ -1314,129 +1400,135 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
 
       {isSettingsPage ? (
         <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto">
-          <section className="mx-auto min-h-full w-full max-w-[430px] bg-white px-3 pt-4 pb-24">
-            <h2 className="text-base font-semibold text-neutral-900">채팅방 설정</h2>
+          <section className="mx-auto min-h-full w-full max-w-[430px] bg-white">
+            <div className="mx-auto flex min-h-full w-full max-w-[392px] flex-col px-5 pt-4 pb-6">
+              <div>
+                <div className="divide-y divide-neutral-200">
+                  <section className="py-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-neutral-900">알림 설정</p>
+                      <button
+                        type="button"
+                        onClick={() => setIsAlarmOnInput((prev) => !prev)}
+                        className={clsx(
+                          'relative inline-flex h-7 w-12 items-center rounded-full transition',
+                          isAlarmOnInput ? 'bg-[#05C075]' : 'bg-neutral-300',
+                        )}
+                        aria-label="알림 토글"
+                      >
+                        <span
+                          className={clsx(
+                            'inline-block h-5 w-5 rounded-full bg-white transition',
+                            isAlarmOnInput ? 'translate-x-6' : 'translate-x-1',
+                          )}
+                        />
+                      </button>
+                    </div>
 
-            <div className="mt-4 divide-y divide-neutral-200">
-              <section className="py-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-neutral-900">알림 설정</p>
+                    <div className="mt-4">
+                      <p className="mb-2 text-sm font-semibold text-neutral-900">채팅방 이름</p>
+                      <input
+                        value={roomNameInput}
+                        onChange={(event) => setRoomNameInput(event.target.value)}
+                        disabled={isPrivateRoom}
+                        placeholder={
+                          isPrivateRoom
+                            ? '1:1 채팅방은 이름 수정이 불가합니다.'
+                            : '채팅방 이름을 입력하세요'
+                        }
+                        className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm text-neutral-900 placeholder:text-neutral-400 disabled:bg-neutral-100 disabled:text-neutral-400"
+                      />
+                    </div>
+                  </section>
+
+                  <section className="py-4">
+                    <p className="text-sm font-semibold text-neutral-900">
+                      최근 사진/파일 미리보기
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-500">최근 공유된 이미지 최대 4장</p>
+
+                    {data?.recentImages?.length ? (
+                      <ul className="mt-3 grid grid-cols-2 gap-2">
+                        {data.recentImages.map((recentImage) => {
+                          const imageSrc = resolveChatAssetUrl(recentImage.s3Key);
+
+                          if (!imageSrc) {
+                            return (
+                              <li
+                                key={recentImage.attachmentId}
+                                className="flex aspect-square items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-center text-[10px] leading-4 text-neutral-400"
+                              >
+                                미리보기 불가
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={recentImage.attachmentId}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setImagePreview({
+                                    src: imageSrc,
+                                    alt: recentImage.originalName || '최근 이미지 미리보기',
+                                  })
+                                }
+                                className="block w-full overflow-hidden rounded-lg border border-neutral-200"
+                                aria-label={`${recentImage.originalName || '최근 이미지'} 확대 보기`}
+                              >
+                                <Image
+                                  src={imageSrc}
+                                  alt={recentImage.originalName || '최근 이미지'}
+                                  width={120}
+                                  height={120}
+                                  className="aspect-square h-auto w-full object-cover"
+                                  unoptimized
+                                />
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 px-1 py-2 text-xs text-neutral-500">
+                        아직 공유된 이미지가 없습니다.
+                      </p>
+                    )}
+                  </section>
+                </div>
+              </div>
+
+              <div className="mt-auto pt-5">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setIsAlarmOnInput((prev) => !prev)}
-                    className={clsx(
-                      'relative inline-flex h-7 w-12 items-center rounded-full transition',
-                      isAlarmOnInput ? 'bg-[#0F172A]' : 'bg-neutral-300',
-                    )}
-                    aria-label="알림 토글"
+                    onClick={handleCloseSettings}
+                    className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
                   >
-                    <span
-                      className={clsx(
-                        'inline-block h-5 w-5 rounded-full bg-white transition',
-                        isAlarmOnInput ? 'translate-x-6' : 'translate-x-1',
-                      )}
-                    />
+                    닫기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleSaveRoomSettings();
+                    }}
+                    disabled={putRoomSettingsMutation.isPending}
+                    className="rounded-lg bg-[#05C075] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#049e61] disabled:opacity-60"
+                  >
+                    {putRoomSettingsMutation.isPending ? '저장 중...' : '저장'}
                   </button>
                 </div>
 
-                <div className="mt-4">
-                  <p className="mb-2 text-sm font-semibold text-neutral-900">채팅방 이름</p>
-                  <input
-                    value={roomNameInput}
-                    onChange={(event) => setRoomNameInput(event.target.value)}
-                    disabled={isPrivateRoom}
-                    placeholder={
-                      isPrivateRoom
-                        ? '1:1 채팅방은 이름 수정이 불가합니다.'
-                        : '채팅방 이름을 입력하세요'
-                    }
-                    className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm text-neutral-900 placeholder:text-neutral-400 disabled:bg-neutral-100 disabled:text-neutral-400"
-                  />
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsLeaveConfirmOpen(true)}
+                    className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
+                  >
+                    채팅방 나가기
+                  </button>
                 </div>
-              </section>
-
-              <section className="py-4">
-                <p className="text-sm font-semibold text-neutral-900">최근 사진/파일 미리보기</p>
-                <p className="mt-1 text-xs text-neutral-500">최근 공유된 이미지 최대 4장</p>
-
-                {data?.recentImages?.length ? (
-                  <ul className="mt-3 grid grid-cols-4 gap-2">
-                    {data.recentImages.map((recentImage) => {
-                      const imageSrc = resolveChatAssetUrl(recentImage.s3Key);
-
-                      if (!imageSrc) {
-                        return (
-                          <li
-                            key={recentImage.attachmentId}
-                            className="flex aspect-square items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-center text-[10px] leading-4 text-neutral-400"
-                          >
-                            미리보기 불가
-                          </li>
-                        );
-                      }
-
-                      return (
-                        <li key={recentImage.attachmentId}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setImagePreview({
-                                src: imageSrc,
-                                alt: recentImage.originalName || '최근 이미지 미리보기',
-                              })
-                            }
-                            className="block w-full overflow-hidden rounded-lg border border-neutral-200"
-                            aria-label={`${recentImage.originalName || '최근 이미지'} 확대 보기`}
-                          >
-                            <Image
-                              src={imageSrc}
-                              alt={recentImage.originalName || '최근 이미지'}
-                              width={120}
-                              height={120}
-                              className="aspect-square h-auto w-full object-cover"
-                              unoptimized
-                            />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="mt-3 px-1 py-2 text-xs text-neutral-500">
-                    아직 공유된 이미지가 없습니다.
-                  </p>
-                )}
-              </section>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleCloseSettings}
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
-              >
-                닫기
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void handleSaveRoomSettings();
-                }}
-                disabled={putRoomSettingsMutation.isPending}
-                className="rounded-lg bg-[#0F172A] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {putRoomSettingsMutation.isPending ? '저장 중...' : '저장'}
-              </button>
-            </div>
-
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={() => setIsLeaveConfirmOpen(true)}
-                className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
-              >
-                채팅방 나가기
-              </button>
+              </div>
             </div>
           </section>
         </div>
