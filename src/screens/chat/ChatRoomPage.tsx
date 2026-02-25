@@ -1377,7 +1377,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       ) : null}
 
       {isSettingsPage ? (
-        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto">
+        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto bg-white">
           <section className="mx-auto min-h-full w-full max-w-[430px] bg-white">
             <div className="mx-auto flex min-h-full w-full max-w-[392px] flex-col px-5 pt-4 pb-6">
               <div>
