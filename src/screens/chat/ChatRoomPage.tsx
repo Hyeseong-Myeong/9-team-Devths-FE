@@ -1001,7 +1001,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                     )}
                   >
                     <div
-                      className={clsx('max-w-[78%]', message.type === 'SYSTEM' ? 'max-w-full' : '')}
+                      className={clsx(
+                        'max-w-[78%] min-w-0',
+                        message.type === 'SYSTEM' ? 'max-w-full' : '',
+                      )}
                     >
                       {!isMine &&
                       !isPrivateRoom &&
@@ -1047,7 +1050,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                           )
                         ) : null}
                         <div
-                          className={clsx('flex flex-col', isMine ? 'items-end' : 'items-start')}
+                          className={clsx(
+                            'flex min-w-0 flex-col',
+                            isMine ? 'items-end' : 'items-start',
+                          )}
                         >
                           {message.type === 'SYSTEM' ? (
                             <div className="mx-auto rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-center text-[11px] text-neutral-600">
@@ -1140,7 +1146,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                           ) : (
                             <div
                               className={clsx(
-                                'rounded-2xl border px-3 py-2',
+                                'max-w-full rounded-2xl border px-3 py-2',
                                 message.isDeleted
                                   ? 'border-neutral-200 bg-neutral-100'
                                   : isMine
