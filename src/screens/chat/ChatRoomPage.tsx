@@ -9,6 +9,7 @@ import {
   Menu,
   MessageSquarePlus,
   Paperclip,
+  SendHorizonal,
   Trash2,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -27,26 +28,19 @@ import {
 import ConfirmModal from '@/components/common/ConfirmModal';
 import { useAppFrame } from '@/components/layout/AppFrameContext';
 import { useHeader } from '@/components/layout/HeaderContext';
-import { fetchMyFollowings } from '@/lib/api/users';
 import { getUserIdFromAccessToken } from '@/lib/auth/token';
 import { applyRealtimeRoomMessage } from '@/lib/chat/realtimeMessageCache';
 import { applyRealtimeRoomNotification } from '@/lib/chat/realtimeRoomCache';
-import {
-  applyRejoinedRoomUiOverride,
-  clearRejoinedRoomUiOverride,
-} from '@/lib/chat/rejoinedRoomUiCache';
+import { clearRejoinedRoomUiOverride } from '@/lib/chat/rejoinedRoomUiCache';
 import { chatStompManager } from '@/lib/chat/stompManager';
 import { chatKeys } from '@/lib/hooks/chat/queryKeys';
 import { useChatMessagesInfiniteQuery } from '@/lib/hooks/chat/useChatMessagesInfiniteQuery';
 import { useChatRoomDetailQuery } from '@/lib/hooks/chat/useChatRoomDetailQuery';
 import { useChatSubscriptions } from '@/lib/hooks/chat/useChatSubscriptions';
-import { useCreatePrivateRoomMutation } from '@/lib/hooks/chat/useCreatePrivateRoomMutation';
 import { useDeleteMessageMutation } from '@/lib/hooks/chat/useDeleteMessageMutation';
 import { useLeaveChatRoomMutation } from '@/lib/hooks/chat/useLeaveChatRoomMutation';
 import { usePatchLastReadMutation } from '@/lib/hooks/chat/usePatchLastReadMutation';
 import { usePutRoomSettingsMutation } from '@/lib/hooks/chat/usePutRoomSettingsMutation';
-import { useFollowUserMutation } from '@/lib/hooks/users/useFollowUserMutation';
-import { useUnfollowUserMutation } from '@/lib/hooks/users/useUnfollowUserMutation';
 import { toast } from '@/lib/toast/store';
 import { uploadFile } from '@/lib/upload/uploadFile';
 
@@ -56,12 +50,6 @@ import type { IMessage } from '@stomp/stompjs';
 type ChatRoomPageProps = Readonly<{
   roomId: number | null;
   mode?: 'room' | 'settings';
-}>;
-
-type ParticipantUser = Readonly<{
-  userId: number;
-  nickname: string;
-  profileImage: string | null;
 }>;
 
 const MESSAGE_PAGE_SIZE = 20;
@@ -193,15 +181,10 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   const [messageInput, setMessageInput] = useState('');
   const [expandedMessageIds, setExpandedMessageIds] = useState<Set<number>>(new Set());
   const [deleteTargetMessageId, setDeleteTargetMessageId] = useState<number | null>(null);
-  const [isParticipantsModalOpen, setIsParticipantsModalOpen] = useState(false);
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
   const [isLeavingRoom, setIsLeavingRoom] = useState(false);
   const [roomNameInput, setRoomNameInput] = useState('');
   const [isAlarmOnInput, setIsAlarmOnInput] = useState(true);
-  const [followingUserIds, setFollowingUserIds] = useState<Set<number>>(new Set());
-  const [followStateOverrides, setFollowStateOverrides] = useState<Record<number, boolean>>({});
-  const [activeParticipantUserId, setActiveParticipantUserId] = useState<number | null>(null);
-  const [isFollowingsLoading, setIsFollowingsLoading] = useState(false);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [isAttachmentPickerOpen, setIsAttachmentPickerOpen] = useState(false);
   const [attachmentValidationMessage, setAttachmentValidationMessage] = useState<string | null>(
@@ -214,12 +197,12 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   const isSettingsPage = mode === 'settings';
   const activeRoomId = isLeavingRoom ? null : roomId;
   const { data, isLoading, isError, refetch } = useChatRoomDetailQuery(activeRoomId);
-  const hasLoadedFollowingsRef = useRef(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const imageAttachmentInputRef = useRef<HTMLInputElement>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement>(null);
   const unreadDividerRef = useRef<HTMLDivElement>(null);
   const deleteLongPressTimerRef = useRef<number | null>(null);
+  const isMessageInputComposingRef = useRef(false);
   const initialScrollResyncTimerRef = useRef<number | null>(null);
   const hasInitialScrollRef = useRef(false);
   const isLoadingOlderRef = useRef(false);
@@ -230,9 +213,6 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   const deleteMessageMutation = useDeleteMessageMutation(roomId ?? 0);
   const putRoomSettingsMutation = usePutRoomSettingsMutation(roomId ?? 0);
   const leaveChatRoomMutation = useLeaveChatRoomMutation(roomId ?? 0);
-  const createPrivateRoomMutation = useCreatePrivateRoomMutation();
-  const followUserMutation = useFollowUserMutation();
-  const unfollowUserMutation = useUnfollowUserMutation();
 
   const {
     data: messageData,
@@ -275,39 +255,6 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
 
     return messages.findIndex((message) => message.messageId > serverLastReadMsgId);
   }, [messages, serverLastReadMsgId]);
-
-  const participants = useMemo<ParticipantUser[]>(() => {
-    const participantMap = new Map<number, ParticipantUser>();
-
-    for (const message of messages) {
-      if (!message.sender) {
-        continue;
-      }
-
-      const participant = participantMap.get(message.sender.userId);
-      if (!participant) {
-        participantMap.set(message.sender.userId, {
-          userId: message.sender.userId,
-          nickname: message.sender.nickname,
-          profileImage: message.sender.profileImage,
-        });
-      }
-    }
-
-    return Array.from(participantMap.values()).sort((a, b) => {
-      if (currentUserId !== null) {
-        if (a.userId === currentUserId && b.userId !== currentUserId) return -1;
-        if (a.userId !== currentUserId && b.userId === currentUserId) return 1;
-      }
-
-      const nicknameCompare = a.nickname.localeCompare(b.nickname, 'ko');
-      if (nicknameCompare !== 0) {
-        return nicknameCompare;
-      }
-
-      return a.userId - b.userId;
-    });
-  }, [currentUserId, messages]);
 
   const isPrivateRoom = data?.type === 'PRIVATE';
 
@@ -585,139 +532,6 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
     }
   }, [deleteMessageMutation, deleteTargetMessageId]);
 
-  const loadMyFollowings = useCallback(async () => {
-    if (isFollowingsLoading) {
-      return;
-    }
-
-    setIsFollowingsLoading(true);
-    try {
-      const ids = new Set<number>();
-      let lastId: number | null | undefined = undefined;
-
-      while (true) {
-        const result = await fetchMyFollowings({
-          size: 100,
-          lastId,
-        });
-
-        if (!result.ok || !result.json || !('data' in result.json) || !result.json.data) {
-          throw new Error('팔로잉 목록 조회 실패');
-        }
-
-        for (const following of result.json.data.followings) {
-          ids.add(following.userId);
-        }
-
-        if (!result.json.data.hasNext || result.json.data.lastId === null) {
-          break;
-        }
-
-        lastId = result.json.data.lastId;
-      }
-
-      setFollowingUserIds(ids);
-      hasLoadedFollowingsRef.current = true;
-    } catch {
-      toast('팔로우 상태를 불러오지 못했습니다.');
-    } finally {
-      setIsFollowingsLoading(false);
-    }
-  }, [isFollowingsLoading]);
-
-  const isParticipantFollowing = useCallback(
-    (userId: number) => {
-      if (followStateOverrides[userId] !== undefined) {
-        return followStateOverrides[userId];
-      }
-      return followingUserIds.has(userId);
-    },
-    [followStateOverrides, followingUserIds],
-  );
-
-  const handleToggleParticipantFollow = useCallback(
-    async (userId: number) => {
-      if (activeParticipantUserId !== null) {
-        return;
-      }
-
-      const currentlyFollowing = isParticipantFollowing(userId);
-      setActiveParticipantUserId(userId);
-
-      try {
-        if (currentlyFollowing) {
-          await unfollowUserMutation.mutateAsync(userId);
-          setFollowStateOverrides((prev) => ({ ...prev, [userId]: false }));
-          setFollowingUserIds((prev) => {
-            const next = new Set(prev);
-            next.delete(userId);
-            return next;
-          });
-          toast('언팔로우했습니다.');
-        } else {
-          await followUserMutation.mutateAsync(userId);
-          setFollowStateOverrides((prev) => ({ ...prev, [userId]: true }));
-          setFollowingUserIds((prev) => {
-            const next = new Set(prev);
-            next.add(userId);
-            return next;
-          });
-          toast('팔로우했습니다.');
-        }
-      } catch (error) {
-        const err = error as Error & { serverMessage?: string };
-        toast(err.serverMessage ?? '팔로우 처리에 실패했습니다.');
-      } finally {
-        setActiveParticipantUserId(null);
-      }
-    },
-    [activeParticipantUserId, followUserMutation, isParticipantFollowing, unfollowUserMutation],
-  );
-
-  const handleCreatePrivateChatWithParticipant = useCallback(
-    async (userId: number) => {
-      if (activeParticipantUserId !== null) {
-        return;
-      }
-
-      setActiveParticipantUserId(userId);
-      try {
-        const targetParticipant =
-          participants.find((participant) => participant.userId === userId) ?? null;
-        const result = await createPrivateRoomMutation.mutateAsync({ userId });
-        const responseData = result.json && 'data' in result.json ? result.json.data : null;
-
-        if (!responseData) {
-          throw new Error('Invalid response');
-        }
-
-        if (!responseData.isNew) {
-          applyRejoinedRoomUiOverride(
-            queryClient,
-            responseData.roomId,
-            targetParticipant?.profileImage ?? null,
-          );
-        }
-
-        setIsParticipantsModalOpen(false);
-        router.push(`/chat/${responseData.roomId}`);
-      } catch (error) {
-        const err = error as Error & { serverMessage?: string };
-        toast(err.serverMessage ?? '1:1 채팅방 이동에 실패했습니다.');
-      } finally {
-        setActiveParticipantUserId(null);
-      }
-    },
-    [activeParticipantUserId, createPrivateRoomMutation, participants, queryClient, router],
-  );
-
-  const handleOpenParticipantsModal = useCallback(() => {
-    setIsParticipantsModalOpen(true);
-    if (!hasLoadedFollowingsRef.current) {
-      void loadMyFollowings();
-    }
-  }, [loadMyFollowings]);
-
   const handleSaveRoomSettings = useCallback(async () => {
     if (roomId === null || putRoomSettingsMutation.isPending) {
       return;
@@ -774,7 +588,6 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
     if (putRoomSettingsMutation.isPending) {
       return;
     }
-    setIsParticipantsModalOpen(false);
     if (roomId === null) {
       return;
     }
@@ -822,6 +635,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
     ),
     [handleSettingsClick],
   );
+  const settingsRightSlot = useMemo(() => <div className="h-9 w-9" aria-hidden="true" />, []);
 
   useEffect(() => {
     setFrameOptions({ showBottomNav: false });
@@ -833,7 +647,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       title: isSettingsPage ? '채팅방 설정' : headerTitle,
       showBackButton: true,
       onBackClick: isSettingsPage ? handleCloseSettings : handleBackClick,
-      rightSlot: isSettingsPage ? undefined : rightSlot,
+      rightSlot: isSettingsPage ? settingsRightSlot : rightSlot,
     });
 
     return () => resetOptions();
@@ -844,6 +658,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
     isSettingsPage,
     resetOptions,
     rightSlot,
+    settingsRightSlot,
     setOptions,
   ]);
 
@@ -1023,14 +838,11 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
   }
 
   return (
-    <main className="px-3 pt-4 pb-3">
+    <main className="-mx-4 flex h-[calc(100dvh-56px-var(--bottom-nav-h))] flex-col sm:-mx-6">
       <section
         ref={messageListRef}
         onScroll={handleMessageScroll}
-        className="overflow-y-auto rounded-2xl border border-neutral-200 bg-neutral-50 p-3"
-        style={{
-          height: 'calc(100dvh - 56px - var(--bottom-nav-h) - 88px)',
-        }}
+        className="min-h-0 flex-1 overflow-y-auto bg-white px-4 py-4"
       >
         {hasNextPage ? (
           <div className="pb-2 text-center text-[11px] text-neutral-400">
@@ -1108,7 +920,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
               return (
                 <div key={message.messageId}>
                   {shouldShowDateSeparator ? (
-                    <div className="-mx-3 my-2 flex justify-center px-3 py-1">
+                    <div className="-mx-4 my-2 flex justify-center px-4 py-1">
                       <span className="rounded-full border border-neutral-200 bg-white/95 px-3 py-1 text-[11px] font-medium text-neutral-600">
                         {formatStickyDateLabel(message.createdAt)}
                       </span>
@@ -1317,58 +1129,92 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
         ) : null}
       </section>
 
-      <form
-        onSubmit={handleSendMessage}
-        className="mt-2 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2"
-      >
-        <input
-          ref={imageAttachmentInputRef}
-          type="file"
-          className="hidden"
-          multiple
-          accept="image/jpeg,image/jpg,image/png,image/webp"
-          onChange={(event) => {
-            void handleAttachmentChange(event);
-          }}
-        />
-        <input
-          ref={fileAttachmentInputRef}
-          type="file"
-          className="hidden"
-          accept="application/pdf"
-          onChange={(event) => {
-            void handleAttachmentChange(event);
-          }}
-        />
-        <button
-          type="button"
-          onClick={handleAttachmentButtonClick}
-          disabled={isAttachmentUploading}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-not-allowed disabled:text-neutral-300"
-          aria-label="파일 첨부"
-        >
-          {isAttachmentUploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Paperclip className="h-4 w-4" />
-          )}
-        </button>
-        <input
-          value={messageInput}
-          onChange={(event) => setMessageInput(event.target.value)}
-          placeholder="메시지를 입력하세요."
-          className="h-9 flex-1 border-0 bg-transparent text-sm text-neutral-900 outline-none placeholder:text-neutral-400"
-          maxLength={2000}
-          autoComplete="off"
-        />
-        <button
-          type="submit"
-          disabled={!messageInput.trim() || isAttachmentUploading}
-          className="rounded-lg bg-[#0F172A] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
-        >
-          전송
-        </button>
-      </form>
+      <div className="border-t border-neutral-200 bg-white px-3 py-2">
+        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+          <input
+            ref={imageAttachmentInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            onChange={(event) => {
+              void handleAttachmentChange(event);
+            }}
+          />
+          <input
+            ref={fileAttachmentInputRef}
+            type="file"
+            className="hidden"
+            accept="application/pdf"
+            onChange={(event) => {
+              void handleAttachmentChange(event);
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleAttachmentButtonClick}
+            disabled={isAttachmentUploading}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:text-neutral-300"
+            aria-label="파일 첨부"
+          >
+            {isAttachmentUploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Paperclip className="h-5 w-5" />
+            )}
+          </button>
+
+          <div className="flex-1">
+            <textarea
+              value={messageInput}
+              onChange={(event) => setMessageInput(event.target.value.slice(0, 2000))}
+              placeholder="메시지를 입력하세요"
+              className="h-11 w-full resize-none rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-900 transition outline-none placeholder:text-neutral-400 focus:border-[#05C075] focus:ring-2 focus:ring-[#05C075]/20"
+              maxLength={2000}
+              rows={1}
+              onCompositionStart={() => {
+                isMessageInputComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                isMessageInputComposingRef.current = false;
+              }}
+              onKeyDown={(event) => {
+                const isComposing =
+                  isMessageInputComposingRef.current ||
+                  (event.nativeEvent as KeyboardEvent).isComposing;
+                if (isComposing) {
+                  return;
+                }
+
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  if (!messageInput.trim() || isAttachmentUploading) {
+                    return;
+                  }
+                  void handleSendMessage();
+                }
+              }}
+            />
+            <div className="mt-1 text-right text-[11px] text-neutral-400">
+              {messageInput.length}/2000
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!messageInput.trim() || isAttachmentUploading}
+            className={clsx(
+              'inline-flex h-11 w-11 items-center justify-center rounded-2xl transition',
+              !messageInput.trim() || isAttachmentUploading
+                ? 'bg-neutral-200 text-neutral-500'
+                : 'bg-[#05C075] text-white hover:bg-[#049e61]',
+            )}
+            aria-label="전송"
+          >
+            <SendHorizonal className="h-5 w-5" />
+          </button>
+        </form>
+      </div>
 
       {imagePreview ? (
         <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 p-4">
@@ -1467,115 +1313,100 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       ) : null}
 
       {isSettingsPage ? (
-        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto bg-white">
-          <section className="mx-auto w-full max-w-[430px] px-3 pt-4 pb-24">
+        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto">
+          <section className="mx-auto min-h-full w-full max-w-[430px] bg-white px-3 pt-4 pb-24">
             <h2 className="text-base font-semibold text-neutral-900">채팅방 설정</h2>
 
-            <div className="mt-4 rounded-xl border border-neutral-200 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-neutral-900">알림 설정</p>
-                <button
-                  type="button"
-                  onClick={() => setIsAlarmOnInput((prev) => !prev)}
-                  className={clsx(
-                    'relative inline-flex h-7 w-12 items-center rounded-full transition',
-                    isAlarmOnInput ? 'bg-[#0F172A]' : 'bg-neutral-300',
-                  )}
-                  aria-label="알림 토글"
-                >
-                  <span
+            <div className="mt-4 divide-y divide-neutral-200">
+              <section className="py-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-neutral-900">알림 설정</p>
+                  <button
+                    type="button"
+                    onClick={() => setIsAlarmOnInput((prev) => !prev)}
                     className={clsx(
-                      'inline-block h-5 w-5 rounded-full bg-white transition',
-                      isAlarmOnInput ? 'translate-x-6' : 'translate-x-1',
+                      'relative inline-flex h-7 w-12 items-center rounded-full transition',
+                      isAlarmOnInput ? 'bg-[#0F172A]' : 'bg-neutral-300',
                     )}
+                    aria-label="알림 토글"
+                  >
+                    <span
+                      className={clsx(
+                        'inline-block h-5 w-5 rounded-full bg-white transition',
+                        isAlarmOnInput ? 'translate-x-6' : 'translate-x-1',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-sm font-semibold text-neutral-900">채팅방 이름</p>
+                  <input
+                    value={roomNameInput}
+                    onChange={(event) => setRoomNameInput(event.target.value)}
+                    disabled={isPrivateRoom}
+                    placeholder={
+                      isPrivateRoom
+                        ? '1:1 채팅방은 이름 수정이 불가합니다.'
+                        : '채팅방 이름을 입력하세요'
+                    }
+                    className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm text-neutral-900 placeholder:text-neutral-400 disabled:bg-neutral-100 disabled:text-neutral-400"
                   />
-                </button>
-              </div>
+                </div>
+              </section>
 
-              <div className="mt-4">
-                <p className="mb-2 text-sm font-semibold text-neutral-900">채팅방 이름</p>
-                <input
-                  value={roomNameInput}
-                  onChange={(event) => setRoomNameInput(event.target.value)}
-                  disabled={isPrivateRoom}
-                  placeholder={
-                    isPrivateRoom
-                      ? '1:1 채팅방은 이름 수정이 불가합니다.'
-                      : '채팅방 이름을 입력하세요'
-                  }
-                  className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm text-neutral-900 placeholder:text-neutral-400 disabled:bg-neutral-100 disabled:text-neutral-400"
-                />
-              </div>
-            </div>
+              <section className="py-4">
+                <p className="text-sm font-semibold text-neutral-900">최근 사진/파일 미리보기</p>
+                <p className="mt-1 text-xs text-neutral-500">최근 공유된 이미지 최대 4장</p>
 
-            <div className="mt-3 rounded-xl border border-neutral-200 p-3">
-              <p className="text-sm font-semibold text-neutral-900">최근 사진/파일 미리보기</p>
-              <p className="mt-1 text-xs text-neutral-500">최근 공유된 이미지 최대 4장</p>
+                {data?.recentImages?.length ? (
+                  <ul className="mt-3 grid grid-cols-4 gap-2">
+                    {data.recentImages.map((recentImage) => {
+                      const imageSrc = resolveChatAssetUrl(recentImage.s3Key);
 
-              {data?.recentImages?.length ? (
-                <ul className="mt-3 grid grid-cols-4 gap-2">
-                  {data.recentImages.map((recentImage) => {
-                    const imageSrc = resolveChatAssetUrl(recentImage.s3Key);
+                      if (!imageSrc) {
+                        return (
+                          <li
+                            key={recentImage.attachmentId}
+                            className="flex aspect-square items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-center text-[10px] leading-4 text-neutral-400"
+                          >
+                            미리보기 불가
+                          </li>
+                        );
+                      }
 
-                    if (!imageSrc) {
                       return (
-                        <li
-                          key={recentImage.attachmentId}
-                          className="flex aspect-square items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-center text-[10px] leading-4 text-neutral-400"
-                        >
-                          미리보기 불가
+                        <li key={recentImage.attachmentId}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setImagePreview({
+                                src: imageSrc,
+                                alt: recentImage.originalName || '최근 이미지 미리보기',
+                              })
+                            }
+                            className="block w-full overflow-hidden rounded-lg border border-neutral-200"
+                            aria-label={`${recentImage.originalName || '최근 이미지'} 확대 보기`}
+                          >
+                            <Image
+                              src={imageSrc}
+                              alt={recentImage.originalName || '최근 이미지'}
+                              width={120}
+                              height={120}
+                              className="aspect-square h-auto w-full object-cover"
+                              unoptimized
+                            />
+                          </button>
                         </li>
                       );
-                    }
-
-                    return (
-                      <li key={recentImage.attachmentId}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setImagePreview({
-                              src: imageSrc,
-                              alt: recentImage.originalName || '최근 이미지 미리보기',
-                            })
-                          }
-                          className="block w-full overflow-hidden rounded-lg border border-neutral-200"
-                          aria-label={`${recentImage.originalName || '최근 이미지'} 확대 보기`}
-                        >
-                          <Image
-                            src={imageSrc}
-                            alt={recentImage.originalName || '최근 이미지'}
-                            width={120}
-                            height={120}
-                            className="aspect-square h-auto w-full object-cover"
-                            unoptimized
-                          />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="mt-3 rounded-lg bg-neutral-50 px-3 py-3 text-xs text-neutral-500">
-                  아직 공유된 이미지가 없습니다.
-                </p>
-              )}
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleOpenParticipantsModal}
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
-              >
-                참여 유저 보기
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsLeaveConfirmOpen(true)}
-                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
-              >
-                채팅방 나가기
-              </button>
+                    })}
+                  </ul>
+                ) : (
+                  <p className="mt-3 px-1 py-2 text-xs text-neutral-500">
+                    아직 공유된 이미지가 없습니다.
+                  </p>
+                )}
+              </section>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -1597,105 +1428,16 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 {putRoomSettingsMutation.isPending ? '저장 중...' : '저장'}
               </button>
             </div>
-          </section>
-        </div>
-      ) : null}
 
-      {isParticipantsModalOpen ? (
-        <div className="fixed inset-0 z-[190] flex items-center justify-center px-4">
-          <button
-            type="button"
-            aria-label="참여 유저 모달 닫기"
-            onClick={() => setIsParticipantsModalOpen(false)}
-            className="absolute inset-0 bg-black/45"
-          />
-          <section className="relative z-10 w-full max-w-[380px] rounded-2xl bg-white p-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-neutral-900">참여 유저</h3>
+            <div className="mt-3">
               <button
                 type="button"
-                onClick={() => setIsParticipantsModalOpen(false)}
-                className="rounded-md px-2 py-1 text-xs font-semibold text-neutral-500 hover:bg-neutral-100"
+                onClick={() => setIsLeaveConfirmOpen(true)}
+                className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
               >
-                닫기
+                채팅방 나가기
               </button>
             </div>
-
-            {isFollowingsLoading ? (
-              <p className="mt-3 text-xs text-neutral-500">팔로우 상태를 불러오는 중...</p>
-            ) : null}
-
-            {participants.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-5 text-center text-sm text-neutral-500">
-                아직 확인 가능한 참여 유저가 없습니다.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {participants.map((participant) => {
-                  const isMine = participant.userId === currentUserId;
-                  const isFollowing = isParticipantFollowing(participant.userId);
-                  const isBusy = activeParticipantUserId !== null;
-
-                  return (
-                    <li
-                      key={participant.userId}
-                      className="rounded-xl border border-neutral-200 bg-white px-3 py-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        {participant.profileImage ? (
-                          <Image
-                            src={participant.profileImage}
-                            alt={`${participant.nickname} 프로필`}
-                            width={40}
-                            height={40}
-                            className="h-10 w-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-200 text-sm font-semibold text-neutral-600">
-                            {participant.nickname.slice(0, 1)}
-                          </div>
-                        )}
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-neutral-900">
-                            {participant.nickname}
-                          </p>
-                        </div>
-
-                        {isMine ? (
-                          <span className="rounded-full bg-neutral-100 px-2 py-1 text-[11px] font-semibold text-neutral-600">
-                            나
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => {
-                                void handleToggleParticipantFollow(participant.userId);
-                              }}
-                              className="rounded-md border border-neutral-200 px-2.5 py-1.5 text-[11px] font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
-                            >
-                              {isFollowing ? '언팔로우' : '팔로우'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => {
-                                void handleCreatePrivateChatWithParticipant(participant.userId);
-                              }}
-                              className="rounded-md bg-[#0F172A] px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
-                            >
-                              1:1 채팅
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
           </section>
         </div>
       ) : null}
