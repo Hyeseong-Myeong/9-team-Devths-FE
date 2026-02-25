@@ -1409,16 +1409,6 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
               </section>
             </div>
 
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={() => setIsLeaveConfirmOpen(true)}
-                className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
-              >
-                채팅방 나가기
-              </button>
-            </div>
-
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -1436,6 +1426,16 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                 className="rounded-lg bg-[#0F172A] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {putRoomSettingsMutation.isPending ? '저장 중...' : '저장'}
+              </button>
+            </div>
+
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setIsLeaveConfirmOpen(true)}
+                className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100"
+              >
+                채팅방 나가기
               </button>
             </div>
           </section>
