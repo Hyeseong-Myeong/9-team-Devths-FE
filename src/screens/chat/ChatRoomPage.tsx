@@ -254,8 +254,11 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       return -1;
     }
 
-    return messages.findIndex((message) => message.messageId > serverLastReadMsgId);
-  }, [messages, serverLastReadMsgId]);
+    return messages.findIndex(
+      (message) =>
+        message.messageId > serverLastReadMsgId && message.sender?.userId !== currentUserId,
+    );
+  }, [currentUserId, messages, serverLastReadMsgId]);
 
   const isPrivateRoom = data?.type === 'PRIVATE';
 
@@ -336,11 +339,13 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
           }
 
           updatedContainer.scrollTop = updatedContainer.scrollHeight;
-          patchLastReadOnce(incomingMessage.messageId);
+          if (incomingMessage.sender?.userId !== currentUserId) {
+            patchLastReadOnce(incomingMessage.messageId);
+          }
         });
       }
     },
-    [patchLastReadOnce, queryClient, roomId],
+    [currentUserId, patchLastReadOnce, queryClient, roomId],
   );
 
   const handleSendMessage = useCallback(
@@ -1377,7 +1382,7 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       ) : null}
 
       {isSettingsPage ? (
-        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto bg-white">
+        <div className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto">
           <section className="mx-auto min-h-full w-full max-w-[430px] bg-white">
             <div className="mx-auto flex min-h-full w-full max-w-[392px] flex-col px-5 pt-4 pb-6">
               <div>
