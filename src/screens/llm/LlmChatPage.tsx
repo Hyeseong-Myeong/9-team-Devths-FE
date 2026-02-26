@@ -22,9 +22,7 @@ type Props = {
   initialModel?: string | null;
 };
 
-const MAX_QUESTIONS = 5;
 const DEFAULT_MODEL: LlmModel = 'GEMINI';
-const FINAL_ANSWER_TIMEOUT_MS = 30_000;
 function parseModel(value: string | null | undefined): LlmModel {
   if (value === 'GEMINI' || value === 'VLLM') {
     return value;
@@ -277,9 +275,6 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
 
       setIsSending(true);
 
-      const questionCount = interviewSession?.questionCount ?? 0;
-      const isFinalAnswer = Boolean(interviewSession) && questionCount >= MAX_QUESTIONS;
-
       const nowLabel = () =>
         new Date().toLocaleTimeString('ko-KR', {
           hour: 'numeric',
@@ -305,15 +300,9 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
         time: '응답 중...',
       };
 
-      setLocalMessages((prev) => [
-        ...prev,
-        pendingUserMessage,
-        ...(isFinalAnswer ? [] : [pendingAiMessage]),
-      ]);
+      setLocalMessages((prev) => [...prev, pendingUserMessage, pendingAiMessage]);
 
-      if (!isFinalAnswer) {
-        setStreamingAiId(tempAiId);
-      }
+      setStreamingAiId(tempAiId);
 
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve());
@@ -333,71 +322,6 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
         setLocalMessages((prev) =>
           prev.map((m) => (m.id === tempUserId ? { ...m, status: 'sent', time: nowLabel() } : m)),
         );
-
-        if (isFinalAnswer) {
-          let timeoutId: number | null = null;
-          let didComplete = false;
-          let didFail = false;
-
-          const timeoutPromise = new Promise<'timeout'>((resolve) => {
-            timeoutId = window.setTimeout(() => resolve('timeout'), FINAL_ANSWER_TIMEOUT_MS);
-          });
-
-          const streamPromise = readSseStream(response, ({ event, data }) => {
-            if (event === 'error') {
-              didFail = true;
-              let errorMessage = '메시지 전송에 실패했습니다.';
-              try {
-                const parsed = JSON.parse(data) as { message?: string };
-                if (parsed.message) errorMessage = parsed.message;
-              } catch {
-                errorMessage = data || errorMessage;
-              }
-
-              setLocalMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempUserId ? { ...m, status: 'failed', time: '전송 실패' } : m,
-                ),
-              );
-              toast(errorMessage);
-              return false;
-            }
-
-            if (event === 'done') {
-              didComplete = true;
-              void handleEndInterview();
-              return false;
-            }
-
-            return true;
-          }).then(() => 'stream' as const);
-
-          const raceResult = await Promise.race([streamPromise, timeoutPromise]);
-
-          if (timeoutId !== null) {
-            window.clearTimeout(timeoutId);
-          }
-
-          if (!didComplete && !didFail) {
-            setLocalMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempUserId ? { ...m, status: 'failed', time: '전송 실패' } : m,
-              ),
-            );
-            toast(
-              raceResult === 'timeout'
-                ? '응답 대기 시간이 초과되었습니다. 다시 시도해주세요.'
-                : '응답이 완료되지 않아 전송에 실패했습니다.',
-            );
-            try {
-              await response.body?.cancel();
-            } catch {
-              // ignore cancel errors
-            }
-          }
-
-          return;
-        }
 
         let aiText = '';
 
@@ -439,7 +363,7 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
               }),
             );
 
-            if (interviewSession && interviewSession.questionCount < MAX_QUESTIONS) {
+            if (interviewSession) {
               const newCount = interviewSession.questionCount + 1;
               setInterviewSession((prev) => (prev ? { ...prev, questionCount: newCount } : null));
             }
@@ -736,9 +660,6 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
               </span>
               <span className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-800 shadow-sm">
                 {interviewSession.type === 'BEHAVIOR' ? '인성 면접' : '기술 면접'}
-              </span>
-              <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold text-neutral-600">
-                질문 {interviewSession.questionCount}/{MAX_QUESTIONS}
               </span>
               <button
                 type="button"
