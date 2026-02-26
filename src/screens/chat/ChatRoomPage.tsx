@@ -339,11 +339,13 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
           }
 
           updatedContainer.scrollTop = updatedContainer.scrollHeight;
-          patchLastReadOnce(incomingMessage.messageId);
+          if (incomingMessage.sender?.userId !== currentUserId) {
+            patchLastReadOnce(incomingMessage.messageId);
+          }
         });
       }
     },
-    [patchLastReadOnce, queryClient, roomId],
+    [currentUserId, patchLastReadOnce, queryClient, roomId],
   );
 
   const handleSendMessage = useCallback(
