@@ -254,8 +254,11 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
       return -1;
     }
 
-    return messages.findIndex((message) => message.messageId > serverLastReadMsgId);
-  }, [messages, serverLastReadMsgId]);
+    return messages.findIndex(
+      (message) =>
+        message.messageId > serverLastReadMsgId && message.sender?.userId !== currentUserId,
+    );
+  }, [currentUserId, messages, serverLastReadMsgId]);
 
   const isPrivateRoom = data?.type === 'PRIVATE';
 
