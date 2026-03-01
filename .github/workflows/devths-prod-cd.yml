@@ -14,8 +14,6 @@ on:
         default: 'Manual deployment from GitHub Actions'
 
 env:
-  IS_PROD: ${{ github.ref == 'refs/heads/main' }}
-
   # AWS 설정
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
@@ -35,7 +33,7 @@ jobs:
   notify-approval-request:
     name: Notify Approval Request
     runs-on: ubuntu-22.04
-    if: ${{ env.IS_PROD == 'true' }}
+    if: ${{ github.ref_name == 'main' }}
     steps:
       - name: 브랜치 검증
         run: |
@@ -46,7 +44,7 @@ jobs:
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             exit 1
           fi
-          echo "✅ 브랜치 검증 완료: main"
+          echo "✅ 브랜치 검증 완료: ${{ github.ref_name }}"
 
       - name: Discord 승인 요청 알림
         uses: sarisia/actions-status-discord@v1
@@ -60,7 +58,7 @@ jobs:
             **요청 시각**: ${{ github.event.created_at }}
 
             **🐳 Docker 이미지**: `${{ inputs.ecr_name }}`
-            **🪣 S3 Key**: `FE/main/${{ inputs.ecr_name }}`
+            **🪣 S3 Key**: `FE/${{ github.ref_name }}/${{ inputs.ecr_name }}`
             **💬 배포 메모**: ${{ inputs.deployment_comment }}
             **🌍 환경**: 🚀 운영(PROD)
 
@@ -84,7 +82,7 @@ jobs:
     name: 1차 승인 (DevOps/TechLead)
     runs-on: ubuntu-22.04
     needs: [notify-approval-request]
-    if: ${{ env.IS_PROD == 'true' }}
+    if: ${{ github.ref_name == 'main' }}
     environment:
       name: production-approval-1
     steps:
@@ -147,7 +145,7 @@ jobs:
     name: 2차 승인 (TechLead)
     runs-on: ubuntu-22.04
     needs: [first-approval]
-    if: ${{ env.IS_PROD == 'true' }}
+    if: ${{ github.ref_name == 'main' }}
     environment:
       name: production-approval-2
     steps:
@@ -208,7 +206,7 @@ jobs:
     name: Production Deployment
     runs-on: ubuntu-22.04
     needs: [second-approval]
-    if: ${{ env.IS_PROD == 'true' }}
+    if: ${{ github.ref_name == 'main' }}
     environment:
       name: production
       url: https://www.devths.com
@@ -217,7 +215,7 @@ jobs:
       deployment_status: ${{ steps.result.outputs.status }}
       deployment_error: ${{ steps.result.outputs.error_message }}
     env:
-      ARTIFACT_KEY: FE/main/${{ inputs.ecr_name }}
+      ARTIFACT_KEY: FE/${{ github.ref_name }}/${{ inputs.ecr_name }}
 
     steps:
       - name: 배포 정보 확인
@@ -320,7 +318,7 @@ jobs:
   notify-discord:
     runs-on: ubuntu-22.04
     needs: [first-approval, second-approval, deploy-production]
-    if: ${{ always() && env.IS_PROD == 'true' }}
+    if: ${{ always() && (github.ref_name == 'main' ) }}
     steps:
       - name: Discord 배포 결과 알림
         if: needs.deploy-production.result == 'success' || needs.deploy-production.result == 'failure'
@@ -336,7 +334,7 @@ jobs:
             **트리거**: ${{ github.actor }}
 
             **🐳 Docker 이미지**: `${{ inputs.ecr_name }}`
-            **📦 아티팩트**: `FE/main/${{ inputs.ecr_name }}`
+            **📦 아티팩트**: `FE/${{ github.ref_name }}/${{ inputs.ecr_name }}`
             **🪣 S3 Bucket**: `${{ env.S3_BUCKET }}`
             **🚀 배포 결과**: ${{ needs.deploy-production.outputs.deployment_status }}
             **🆔 Deployment ID**: `${{ needs.deploy-production.outputs.deployment_id }}`
@@ -365,7 +363,7 @@ jobs:
             **취소자**: ${{ github.actor }}
 
             **🐳 Docker 이미지**: `${{ inputs.ecr_name }}`
-            **📦 아티팩트**: `FE/main/${{ inputs.ecr_name }}`
+            **📦 아티팩트**: `FE/${{ github.ref_name }}/${{ inputs.ecr_name }}`
             **💬 배포 메모**: ${{ inputs.deployment_comment }}
 
             **취소 단계**:

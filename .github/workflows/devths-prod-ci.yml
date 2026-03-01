@@ -16,7 +16,6 @@ env:
   # 공통 설정
   NODE_VERSION: '22.x'
   BRANCH_NAME: ${{ github.ref_name }}
-  IS_PROD: ${{ github.ref_name == 'main' }}
   ENV_TYPE: '🚀 운영(PROD)'
 
   # AWS 설정
