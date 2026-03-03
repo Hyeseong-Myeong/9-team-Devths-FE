@@ -1130,7 +1130,8 @@ export default function ChatRoomPage({ roomId, mode = 'room' }: ChatRoomPageProp
                                 </div>
                               )}
                             </button>
-                          ) : (message.type === 'FILE' || message.type === 'PDF') && !message.isDeleted ? (
+                          ) : (message.type === 'FILE' || message.type === 'PDF') &&
+                            !message.isDeleted ? (
                             <button
                               type="button"
                               onClick={() => {
