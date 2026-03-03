@@ -22,9 +22,7 @@ type Props = {
   initialModel?: string | null;
 };
 
-const MAX_QUESTIONS = 5;
 const DEFAULT_MODEL: LlmModel = 'GEMINI';
-const FINAL_ANSWER_TIMEOUT_MS = 30_000;
 function parseModel(value: string | null | undefined): LlmModel {
   if (value === 'GEMINI' || value === 'VLLM') {
     return value;
@@ -74,6 +72,10 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
   const [interviewSession, setInterviewSession] = useState<InterviewSession | null>(null);
   const [model] = useState<LlmModel>(() => parseModel(initialModel));
   const [isSending, setIsSending] = useState(false);
+  const [isRetryingEvaluation, setIsRetryingEvaluation] = useState(false);
+  const [finishedEvaluationMessageId, setFinishedEvaluationMessageId] = useState<string | null>(
+    null,
+  );
   const [streamingAiId, setStreamingAiId] = useState<string | null>(null);
   const notifiedDeletedRef = useRef(false);
   const { setBlocked, setBlockMessage } = useNavigationGuard();
@@ -140,12 +142,18 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
   }, [interviewUIState, setBlocked, setBlockMessage, streamingAiId]);
 
   const handleEndInterview = useCallback(
-    async (options?: { userMessageId?: string }) => {
-      if (!interviewSession) return;
+    async (options?: { userMessageId?: string; retry?: boolean; interviewId?: number }) => {
+      const isRetry = options?.retry === true;
+      const targetInterviewId = options?.interviewId ?? interviewSession?.interviewId ?? null;
+      if (!targetInterviewId) return;
 
       const userMessageId = options?.userMessageId;
 
-      setInterviewUIState('ending');
+      if (isRetry) {
+        setIsRetryingEvaluation(true);
+      } else {
+        setInterviewUIState('ending');
+      }
 
       const systemId = `sys-${Date.now()}`;
       const evalId = `temp-eval-${Date.now()}`;
@@ -153,22 +161,29 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
       setStreamingAiId(evalId);
       setLocalMessages((prev) => [
         ...prev,
-        {
-          id: systemId,
-          role: 'SYSTEM',
-          text: '면접이 종료되었습니다. 답변 평가를 시작합니다.',
-        },
+        ...(isRetry
+          ? []
+          : [
+              {
+                id: systemId,
+                role: 'SYSTEM' as const,
+                text: '면접이 종료되었습니다. 평가를 시작합니다.',
+              },
+            ]),
         {
           id: evalId,
           role: 'AI',
           text: '',
           time: '평가 중...',
+          interviewId: targetInterviewId,
+          isInterviewEvaluation: true,
         },
       ]);
 
       try {
         const response = await endInterviewStream(numericRoomId, {
-          interviewId: interviewSession.interviewId,
+          interviewId: targetInterviewId,
+          retry: isRetry,
         });
 
         if (!response.ok) {
@@ -205,7 +220,9 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
                 return m;
               }),
             );
-            setInterviewUIState('active');
+            if (!isRetry) {
+              setInterviewUIState('active');
+            }
             toast(errorMessage);
             return false;
           }
@@ -215,7 +232,9 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
             setLocalMessages((prev) =>
               prev.map((m) => (m.id === evalId ? { ...m, text: evalText, time: nowLabel() } : m)),
             );
-            setInterviewSession(null);
+            if (!isRetry) {
+              setInterviewSession(null);
+            }
             setInterviewUIState('idle');
             return false;
           }
@@ -227,8 +246,10 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
           return true;
         });
       } catch {
-        toast('면접 종료에 실패했습니다.');
-        setInterviewUIState('active');
+        toast(isRetry ? '면접 평가 재요청에 실패했습니다.' : '면접 종료에 실패했습니다.');
+        if (!isRetry) {
+          setInterviewUIState('active');
+        }
         setStreamingAiId((prev) => (prev === evalId ? null : prev));
         if (userMessageId) {
           setLocalMessages((prev) =>
@@ -236,6 +257,10 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
               m.id === userMessageId ? { ...m, status: 'failed', time: '전송 실패' } : m,
             ),
           );
+        }
+      } finally {
+        if (isRetry) {
+          setIsRetryingEvaluation(false);
         }
       }
     },
@@ -249,9 +274,6 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
       if (!trimmed) return;
 
       setIsSending(true);
-
-      const questionCount = interviewSession?.questionCount ?? 0;
-      const isFinalAnswer = Boolean(interviewSession) && questionCount >= MAX_QUESTIONS;
 
       const nowLabel = () =>
         new Date().toLocaleTimeString('ko-KR', {
@@ -278,15 +300,9 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
         time: '응답 중...',
       };
 
-      setLocalMessages((prev) => [
-        ...prev,
-        pendingUserMessage,
-        ...(isFinalAnswer ? [] : [pendingAiMessage]),
-      ]);
+      setLocalMessages((prev) => [...prev, pendingUserMessage, pendingAiMessage]);
 
-      if (!isFinalAnswer) {
-        setStreamingAiId(tempAiId);
-      }
+      setStreamingAiId(tempAiId);
 
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve());
@@ -306,71 +322,6 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
         setLocalMessages((prev) =>
           prev.map((m) => (m.id === tempUserId ? { ...m, status: 'sent', time: nowLabel() } : m)),
         );
-
-        if (isFinalAnswer) {
-          let timeoutId: number | null = null;
-          let didComplete = false;
-          let didFail = false;
-
-          const timeoutPromise = new Promise<'timeout'>((resolve) => {
-            timeoutId = window.setTimeout(() => resolve('timeout'), FINAL_ANSWER_TIMEOUT_MS);
-          });
-
-          const streamPromise = readSseStream(response, ({ event, data }) => {
-            if (event === 'error') {
-              didFail = true;
-              let errorMessage = '메시지 전송에 실패했습니다.';
-              try {
-                const parsed = JSON.parse(data) as { message?: string };
-                if (parsed.message) errorMessage = parsed.message;
-              } catch {
-                errorMessage = data || errorMessage;
-              }
-
-              setLocalMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempUserId ? { ...m, status: 'failed', time: '전송 실패' } : m,
-                ),
-              );
-              toast(errorMessage);
-              return false;
-            }
-
-            if (event === 'done') {
-              didComplete = true;
-              void handleEndInterview();
-              return false;
-            }
-
-            return true;
-          }).then(() => 'stream' as const);
-
-          const raceResult = await Promise.race([streamPromise, timeoutPromise]);
-
-          if (timeoutId !== null) {
-            window.clearTimeout(timeoutId);
-          }
-
-          if (!didComplete && !didFail) {
-            setLocalMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempUserId ? { ...m, status: 'failed', time: '전송 실패' } : m,
-              ),
-            );
-            toast(
-              raceResult === 'timeout'
-                ? '응답 대기 시간이 초과되었습니다. 다시 시도해주세요.'
-                : '응답이 완료되지 않아 전송에 실패했습니다.',
-            );
-            try {
-              await response.body?.cancel();
-            } catch {
-              // ignore cancel errors
-            }
-          }
-
-          return;
-        }
 
         let aiText = '';
 
@@ -412,7 +363,7 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
               }),
             );
 
-            if (interviewSession && interviewSession.questionCount < MAX_QUESTIONS) {
+            if (interviewSession) {
               const newCount = interviewSession.questionCount + 1;
               setInterviewSession((prev) => (prev ? { ...prev, questionCount: newCount } : null));
             }
@@ -439,7 +390,7 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
         setIsSending(false);
       }
     },
-    [handleEndInterview, interviewSession, model, numericRoomId],
+    [interviewSession, model, numericRoomId],
   );
 
   const handleRetry = useCallback(
@@ -562,6 +513,36 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
     () => [...serverMessages, ...localMessages],
     [serverMessages, localMessages],
   );
+  const latestInterviewEvaluationMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].isInterviewEvaluation) {
+        return messages[i];
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const handleRetryInterviewEvaluation = useCallback(() => {
+    const targetInterviewId = latestInterviewEvaluationMessage?.interviewId;
+    if (!targetInterviewId) {
+      toast('재시도할 면접 평가 정보를 찾을 수 없습니다.');
+      return;
+    }
+    void handleEndInterview({ retry: true, interviewId: targetInterviewId });
+  }, [handleEndInterview, latestInterviewEvaluationMessage]);
+
+  const handleFinishInterview = useCallback((messageId: string) => {
+    setFinishedEvaluationMessageId(messageId);
+    setInterviewSession(null);
+    setInterviewUIState('idle');
+  }, []);
+
+  const isInterviewEvaluationActionsDisabled =
+    (latestInterviewEvaluationMessage?.id !== null &&
+      latestInterviewEvaluationMessage?.id !== undefined &&
+      latestInterviewEvaluationMessage.id === finishedEvaluationMessageId) ||
+    isRetryingEvaluation;
+
   const isComposerDisabled =
     isSending ||
     Boolean(streamingAiId) ||
@@ -617,6 +598,13 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
           isLoadingMore={isFetchingNextPage}
           onRetry={handleRetry}
           onDeleteFailed={handleDeleteFailed}
+          retryEvaluationMessageId={
+            interviewUIState === 'idle' ? (latestInterviewEvaluationMessage?.id ?? null) : null
+          }
+          onRetryEvaluation={() => handleRetryInterviewEvaluation()}
+          onFinishInterview={handleFinishInterview}
+          isRetryEvaluationLoading={isRetryingEvaluation}
+          isInterviewEvaluationActionsDisabled={isInterviewEvaluationActionsDisabled}
         />
 
         <div className="bg-white px-3 py-2">
@@ -672,9 +660,6 @@ export default function LlmChatPage({ roomId: _roomId, numericRoomId, initialMod
               </span>
               <span className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-800 shadow-sm">
                 {interviewSession.type === 'BEHAVIOR' ? '인성 면접' : '기술 면접'}
-              </span>
-              <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold text-neutral-600">
-                질문 {interviewSession.questionCount}/{MAX_QUESTIONS}
               </span>
               <button
                 type="button"

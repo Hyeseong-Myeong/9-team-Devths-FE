@@ -1,4 +1,9 @@
-import { clearAccessToken, getAccessToken, setAccessToken } from '@/lib/auth/token';
+import {
+  clearAccessToken,
+  getAccessToken,
+  isAccessTokenExpired,
+  setAccessToken,
+} from '@/lib/auth/token';
 
 import type { ApiErrorResponse, ApiResponse } from '@/types/api';
 
@@ -34,6 +39,23 @@ async function refreshAccessToken(): Promise<boolean> {
     clearAccessToken();
     return false;
   }
+}
+
+export async function ensureAccessToken(): Promise<boolean> {
+  const token = getAccessToken();
+  if (token && !isAccessTokenExpired(token)) {
+    return true;
+  }
+
+  if (!isRefreshing) {
+    isRefreshing = true;
+    refreshPromise = refreshAccessToken().finally(() => {
+      isRefreshing = false;
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise ?? false;
 }
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -100,6 +122,7 @@ export async function apiStreamRequest(
   }
 
   if (withAuth) {
+    await ensureAccessToken();
     const token = getAccessToken();
     if (token) {
       finalHeaders.Authorization = `Bearer ${token}`;
@@ -164,6 +187,7 @@ export async function apiRequest<T>(
   }
 
   if (withAuth) {
+    await ensureAccessToken();
     const token = getAccessToken();
     if (token) {
       finalHeaders.Authorization = `Bearer ${token}`;
